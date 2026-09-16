@@ -1,11 +1,46 @@
 const { google } = require("googleapis");
 const { Readable } = require("stream");
+const fs = require("fs");
 
 function getDriveClient() {
   const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const serviceAccountJsonBase64 =
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64;
 
-  if (credentialsPath) {
+  let credentials;
+
+  if (serviceAccountJson || serviceAccountJsonBase64) {
+    try {
+      const encodedJson = serviceAccountJsonBase64
+        ? Buffer.from(serviceAccountJsonBase64, "base64").toString("utf8")
+        : serviceAccountJson;
+      credentials = JSON.parse(encodedJson);
+    } catch {
+      throw new Error(
+        "Google service-account credentials are not valid JSON. Check GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_BASE64.",
+      );
+    }
+  }
+
+  if (credentials?.type !== "service_account" || !credentials.client_email) {
+    if (serviceAccountJson || serviceAccountJsonBase64) {
+      throw new Error(
+        "Google service-account credentials must contain type=service_account and client_email.",
+      );
+    }
+  }
+
+  if (credentials) {
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/drive"],
+    });
+
+    return google.drive({ version: "v3", auth });
+  }
+
+  if (credentialsPath && fs.existsSync(credentialsPath)) {
     const auth = new google.auth.GoogleAuth({
       keyFile: credentialsPath,
       scopes: ["https://www.googleapis.com/auth/drive"],
@@ -22,6 +57,10 @@ function getDriveClient() {
     });
 
     return google.drive({ version: "v3", auth });
+  }
+
+  if (credentialsPath && process.env.NODE_ENV !== "production") {
+    throw new Error(`Google credential file not found: ${credentialsPath}`);
   }
 
   return null;
@@ -77,7 +116,7 @@ async function uploadToGoogleDrive(
 
   if (!drive) {
     throw new Error(
-      "Google Drive is not configured. Set GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_SERVICE_ACCOUNT_JSON and GOOGLE_DRIVE_FOLDER_ID.",
+      "Google Drive is not configured. Set GOOGLE_SERVICE_ACCOUNT_JSON (recommended for deployment) or GOOGLE_APPLICATION_CREDENTIALS, plus GOOGLE_DRIVE_FOLDER_ID.",
     );
   }
 
