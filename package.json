@@ -1,0 +1,38 @@
+{
+  "name": "attendance-system-backend",
+  "version": "1.0.0",
+  "description": "Express server for Attendance System using PostgreSQL",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "build:frontend": "cd ../Frontend && npm run build",
+    "build:start": "npm run build:frontend && npm start",
+    "dev": "concurrently -n BACKEND,FRONTEND -c blue,green \"nodemon src/server.js\" \"cd ../Frontend && npm run dev\"",
+    "backend": "nodemon src/server.js",
+    "frontend": "cd ../Frontend && npm run dev",
+    "seed:dtr": "node scripts/seedDtrEmployees.js",
+    "seed:users": "node scripts/seedUsers.js"
+  },
+  "keywords": [
+    "attendance",
+    "postgresql",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "googleapis": "^178.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.3.0",
+    "nodemon": "^3.1.14",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "concurrently": "^10.0.5"
+  }
+}
