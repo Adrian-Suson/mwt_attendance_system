@@ -164,6 +164,23 @@ async function uploadToGoogleDrive(
   };
 }
 
+async function uploadToGoogleDrivePath(file, folderNames = []) {
+  const drive = getDriveClient();
+
+  if (!drive) {
+    throw new Error(
+      "Google Drive is not configured. Set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS, plus GOOGLE_DRIVE_FOLDER_ID.",
+    );
+  }
+
+  let folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  for (const folderName of folderNames) {
+    folderId = await getOrCreateDriveFolder(drive, folderName, folderId);
+  }
+
+  return uploadToGoogleDrive(file, folderId);
+}
+
 function getDriveFileId(filePath) {
   try {
     const url = new URL(filePath);
@@ -204,4 +221,5 @@ module.exports = {
   downloadFromGoogleDrive,
   getOrCreateDriveFolder,
   uploadToGoogleDrive,
+  uploadToGoogleDrivePath,
 };

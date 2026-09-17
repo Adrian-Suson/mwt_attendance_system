@@ -250,6 +250,33 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
       `ALTER TABLE employees ADD COLUMN IF NOT EXISTS hire_date DATE;`,
     );
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS employee_face_embeddings (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        embedding JSONB NOT NULL,
+        model VARCHAR(100) NOT NULL DEFAULT 'face-api.js',
+        drive_file_id VARCHAR(255),
+        drive_file_url TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(
+      `ALTER TABLE employee_face_embeddings ADD COLUMN IF NOT EXISTS drive_file_id VARCHAR(255);`,
+    );
+    await client.query(
+      `ALTER TABLE employee_face_embeddings ADD COLUMN IF NOT EXISTS drive_file_url TEXT;`,
+    );
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS idx_employee_face_embeddings_employee_id
+       ON employee_face_embeddings(employee_id);`,
+    );
+    await client.query(
+      `ALTER TABLE employee_face_embeddings
+       ALTER COLUMN model SET DEFAULT 'face-api.js';`,
+    );
+
     // Add CHECK constraints if they don't exist (safe, conditional).
     await client.query(`DO $$
     BEGIN
@@ -577,7 +604,13 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
 
       const adminEmail = process.env.ADMIN_EMAIL || "dennisqp@stpeter.com.ph";
 
-      const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+      const adminPassword = process.env.ADMIN_PASSWORD;
+
+      if (!adminPassword || adminPassword.length < 12) {
+        throw new Error(
+          "ADMIN_PASSWORD must be set to at least 12 characters before the first production startup.",
+        );
+      }
 
       const passwordHash = bcrypt.hashSync(adminPassword, SALT_ROUNDS);
 

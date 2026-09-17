@@ -102,6 +102,64 @@ async function getPublicEmployeeNames() {
   return result.rows;
 }
 
+async function getEmployeeFaceEmbeddings(employeeId) {
+  const client = getClient();
+  const result = await client.query(
+    `SELECT id, employee_id, embedding, model, created_at, updated_at
+     FROM employee_face_embeddings
+     WHERE employee_id = $1
+     ORDER BY id ASC`,
+    [employeeId],
+  );
+  return result.rows;
+}
+
+async function getAllActiveFaceEmbeddings() {
+  const client = getClient();
+  const result = await client.query(
+    `SELECT efe.id, efe.employee_id, efe.embedding, efe.model,
+            e.first_name, e.middle_name, e.last_name
+     FROM employee_face_embeddings efe
+     JOIN employees e ON e.id = efe.employee_id
+     WHERE LOWER(COALESCE(e.status, 'active')) <> 'inactive'
+     ORDER BY efe.employee_id ASC, efe.id ASC`,
+  );
+  return result.rows;
+}
+
+async function addEmployeeFaceEmbedding(
+  employeeId,
+  embedding,
+  model = "face-api.js",
+  driveFile = {},
+) {
+  const client = getClient();
+  const result = await client.query(
+    `INSERT INTO employee_face_embeddings (
+       employee_id, embedding, model, drive_file_id, drive_file_url
+     )
+     SELECT id, $2::jsonb, $3, $4, $5 FROM employees WHERE id = $1
+     RETURNING id, employee_id, model, drive_file_id, drive_file_url, created_at`,
+    [
+      employeeId,
+      JSON.stringify(embedding),
+      model,
+      driveFile.id || null,
+      driveFile.webViewLink || driveFile.webContentLink || null,
+    ],
+  );
+  return result.rows[0] || null;
+}
+
+async function deleteEmployeeFaceEmbeddings(employeeId) {
+  const client = getClient();
+  const result = await client.query(
+    `DELETE FROM employee_face_embeddings WHERE employee_id = $1`,
+    [employeeId],
+  );
+  return result.rowCount;
+}
+
 async function getEmployeeById(id, chapelId) {
   const client = getClient();
   const scope = chapelId
@@ -228,6 +286,10 @@ module.exports = {
   EMPLOYEE_ROLES,
   getAllEmployees,
   getPublicEmployeeNames,
+  getEmployeeFaceEmbeddings,
+  getAllActiveFaceEmbeddings,
+  addEmployeeFaceEmbedding,
+  deleteEmployeeFaceEmbeddings,
   getEmployeeById,
   createEmployee,
   updateEmployee,

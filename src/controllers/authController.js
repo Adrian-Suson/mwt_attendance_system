@@ -1,8 +1,7 @@
 const User = require("../models/user");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-
-const JWT_SECRET = process.env.JWT_SECRET || "change-me";
+const { getJwtSecret } = require("../config/security");
 
 async function login(req, res) {
   const { email, password } = req.body;
@@ -23,7 +22,7 @@ async function login(req, res) {
         role: user.role,
         chapel_id: user.chapel_id,
       },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: "8h" },
     );
 

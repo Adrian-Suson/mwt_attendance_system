@@ -20,12 +20,20 @@
   ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
+    "@canvas/image": "^2.0.0",
+    "@tensorflow/tfjs": "^1.7.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^7.5.0",
+    "face-api.js": "^0.22.2",
     "googleapis": "^178.0.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.3.0",
     "nodemon": "^3.1.14",
@@ -33,6 +41,10 @@
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",
-    "concurrently": "^10.0.5"
+    "concurrently": "^9.2.1"
+  },
+  "allowScripts": {
+    "bcrypt@6.0.0": true,
+    "core-js@3.29.1": true
   }
 }

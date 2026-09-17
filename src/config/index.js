@@ -3,7 +3,7 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const PORT = process.env.PORT || 5000;
-const AUTO_CREATE_DB = process.env.DB_AUTO_CREATE !== "false";
+const AUTO_CREATE_DB = process.env.DB_AUTO_CREATE === "true";
 
 const dbConfig = process.env.DATABASE_URL
   ? {

@@ -1,10 +1,14 @@
 const express = require("express");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const path = require("path");
 const fs = require("fs");
 const { PORT, AUTO_CREATE_DB, dbConfig, dbLogConfig } = require("./config");
 const cors = require("cors");
 
 const app = express();
+app.disable("x-powered-by");
+if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 const frontendDistPath = path.join(__dirname, "../public");
 const configuredCorsOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
@@ -27,6 +31,15 @@ const corsOrigin = configuredCorsOrigins.length
   : true;
 
 app.use(express.json());
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 600,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+  }),
+);
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 // Enable CORS for frontend (configurable via CORS_ORIGIN env var)
 app.use(
@@ -61,8 +74,20 @@ const publicUploadRoutes = require("./routes/publicUploadRoutes");
 const authRoutes = require("./routes/authRoutes");
 const employeeChapelRoutes = require("./routes/employeeChapelRoutes");
 const reportRoutes = require("./routes/reportRoutes");
+const faceRoutes = require("./routes/faceRoutes");
+const { getJwtSecret } = require("./config/security");
+const {
+  initializeFaceRecognition,
+} = require("./services/faceRecognitionService");
 
 async function startServer() {
+  if (process.env.NODE_ENV === "production") {
+    getJwtSecret();
+    if (!configuredCorsOrigins.length) {
+      throw new Error("CORS_ORIGIN must be set in production.");
+    }
+  }
+
   if (!process.env.DATABASE_URL && typeof dbConfig.password !== "string") {
     console.error(
       "DB password must be a string. Check your DB_PASSWORD environment variable.",
@@ -75,6 +100,14 @@ async function startServer() {
     // share the connected client with models/controllers
     setClient(client);
     app.use("/api/reports", reportRoutes(client));
+    try {
+      await initializeFaceRecognition();
+    } catch (faceError) {
+      console.error("[FACE] Recognition is unavailable:", faceError.message);
+      console.error(
+        "[FACE] Attendance remains available, but face-api.js models must be present before enabling face endpoints.",
+      );
+    }
   } catch (err) {
     console.error("Failed to initialize database. Exiting:", err.message);
     process.exit(1);
@@ -118,6 +151,7 @@ app.use("/api/employee-schedules", employeeScheduleRoutes);
 app.use("/api/public-uploads", publicUploadRoutes);
 app.use("/api/employee-chapels", employeeChapelRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/face", faceRoutes);
 
 if (fs.existsSync(frontendDistPath)) {
   app.get(/^(?!\/api|\/uploads).*/, (req, res) => {
