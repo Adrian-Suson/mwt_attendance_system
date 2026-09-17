@@ -26,7 +26,7 @@ npm start
 
 ## Backend face recognition
 
-Face recognition runs inside Express using `face-api.js`, SSD MobileNet V1 face detection, 68-point landmarks, and the face recognition descriptor model. It uses pure JavaScript TensorFlow.js CPU execution, so it does not require `@tensorflow/tfjs-node`, Python, or a separate service. The server loads one shared model instance during startup. Enrollment images are uploaded from memory to Google Drive under `DTR photo/Facetemplate`; PostgreSQL stores the descriptor plus the Drive file ID/link.
+Face recognition runs inside Express using `face-api.js`, Tiny Face Detector by default for faster CPU processing, 68-point landmarks, and the face recognition descriptor model. It uses pure JavaScript TensorFlow.js CPU execution, so it does not require `@tensorflow/tfjs-node`, Python, or a separate service. The server loads one shared model instance during startup. Enrollment images are uploaded from memory to Google Drive under `DTR photo/Facetemplate`; PostgreSQL stores the descriptor plus the Drive file ID/link.
 
 The existing employee primary key is `employees.id`. Startup creates `employee_face_embeddings`, allowing multiple reference descriptors per employee:
 
@@ -67,6 +67,8 @@ The required model files are stored in `Backend/models/face-api`:
 - `face_recognition_model-weights_manifest.json` and shards
 
 The directory can be changed with `FACE_MODEL_DIR`.
+
+Keep the complete `Backend/models/face-api` directory in the deployment artifact. With `FACE_MODEL_DIR=models/face-api`, the application resolves it relative to the Backend directory, even when the hosting platform starts Node from the repository root. Do not place these model files in frontend `public` or omit them from the deployment package.
 
 ### Matching threshold
 

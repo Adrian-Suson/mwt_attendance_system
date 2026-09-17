@@ -1,12 +1,34 @@
 const path = require("path");
+const fs = require("fs");
 const faceapi = require("face-api.js");
 const { imageFromBuffer, getImageData } = require("@canvas/image");
 
-const MODEL_DIR = path.resolve(
-  process.env.FACE_MODEL_DIR || path.join(__dirname, "../../models/face-api"),
-);
+const configuredModelDir = process.env.FACE_MODEL_DIR || "models/face-api";
+const MODEL_DIR = path.isAbsolute(configuredModelDir)
+  ? configuredModelDir
+  : path.resolve(__dirname, "../..", configuredModelDir);
+const FACE_DETECTOR = process.env.FACE_DETECTOR || "tiny";
+const FACE_TINY_INPUT_SIZE = Number(process.env.FACE_TINY_INPUT_SIZE || 320);
+const REQUIRED_MODEL_FILES = [
+  ...(FACE_DETECTOR === "tiny"
+    ? [
+        "tiny_face_detector_model-weights_manifest.json",
+        "tiny_face_detector_model-shard1",
+      ]
+    : [
+        "ssd_mobilenetv1_model-weights_manifest.json",
+        "ssd_mobilenetv1_model-shard1",
+        "ssd_mobilenetv1_model-shard2",
+      ]),
+  "face_landmark_68_model-weights_manifest.json",
+  "face_landmark_68_model-shard1",
+  "face_recognition_model-weights_manifest.json",
+  "face_recognition_model-shard1",
+  "face_recognition_model-shard2",
+];
 const FACE_MATCH_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || 0.55);
 const FACE_MIN_CONFIDENCE = Number(process.env.FACE_MIN_CONFIDENCE || 0.6);
+const FACE_INPUT_MAX_SIZE = Number(process.env.FACE_INPUT_MAX_SIZE || 640);
 
 let initializationPromise = null;
 let initialized = false;
@@ -20,10 +42,22 @@ async function initializeFaceRecognition() {
 
   initializationPromise = (async () => {
     try {
+      const missingModels = REQUIRED_MODEL_FILES.filter(
+        (fileName) => !fs.existsSync(path.join(MODEL_DIR, fileName)),
+      );
+
+      if (missingModels.length > 0) {
+        throw new Error(
+          `Missing face-api.js model files in ${MODEL_DIR}: ${missingModels.join(", ")}`,
+        );
+      }
+
       await faceapi.tf.setBackend("cpu");
       await faceapi.tf.ready();
       await Promise.all([
-        faceapi.nets.ssdMobilenetv1.loadFromDisk(MODEL_DIR),
+        FACE_DETECTOR === "tiny"
+          ? faceapi.nets.tinyFaceDetector.loadFromDisk(MODEL_DIR)
+          : faceapi.nets.ssdMobilenetv1.loadFromDisk(MODEL_DIR),
         faceapi.nets.faceLandmark68Net.loadFromDisk(MODEL_DIR),
         faceapi.nets.faceRecognitionNet.loadFromDisk(MODEL_DIR),
       ]);
@@ -58,7 +92,16 @@ async function imageToTensor(buffer) {
   );
   const rgb = faceapi.tf.slice(rgba, [0, 0, 0], [height, width, 3]);
   rgba.dispose();
-  return rgb;
+
+  const scale = Math.min(1, FACE_INPUT_MAX_SIZE / Math.max(width, height));
+  if (scale === 1) return rgb;
+
+  const resized = faceapi.tf.image.resizeBilinear(rgb, [
+    Math.max(1, Math.round(height * scale)),
+    Math.max(1, Math.round(width * scale)),
+  ]);
+  rgb.dispose();
+  return resized;
 }
 
 async function detectImage(buffer) {
@@ -74,9 +117,14 @@ async function detectImage(buffer) {
     const detections = await faceapi
       .detectAllFaces(
         tensor,
-        new faceapi.SsdMobilenetv1Options({
-          minConfidence: FACE_MIN_CONFIDENCE,
-        }),
+        FACE_DETECTOR === "tiny"
+          ? new faceapi.TinyFaceDetectorOptions({
+              inputSize: FACE_TINY_INPUT_SIZE,
+              scoreThreshold: FACE_MIN_CONFIDENCE,
+            })
+          : new faceapi.SsdMobilenetv1Options({
+              minConfidence: FACE_MIN_CONFIDENCE,
+            }),
       )
       .withFaceLandmarks()
       .withFaceDescriptors();
@@ -154,10 +202,12 @@ function matchEmbedding(descriptor, templates) {
 function getFaceConfiguration() {
   return {
     model: "face-api.js",
-    detector: "ssdMobilenetv1",
+    detector: FACE_DETECTOR === "tiny" ? "tinyFaceDetector" : "ssdMobilenetv1",
     descriptor: "faceRecognitionNet",
     landmark: "faceLandmark68Net",
     minConfidence: FACE_MIN_CONFIDENCE,
+    inputMaxSize: FACE_INPUT_MAX_SIZE,
+    tinyInputSize: FACE_TINY_INPUT_SIZE,
     matchDistanceThreshold: FACE_MATCH_THRESHOLD,
     backend: faceapi.tf.getBackend(),
   };
