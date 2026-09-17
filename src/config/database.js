@@ -224,6 +224,7 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
     await client.query(
       `ALTER TABLE employees ADD COLUMN IF NOT EXISTS role VARCHAR(100);`,
     );
+
     await client.query(
       `ALTER TABLE employees ADD COLUMN IF NOT EXISTS chapel_id INTEGER;`,
     );

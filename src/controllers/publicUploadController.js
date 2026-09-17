@@ -353,6 +353,35 @@ async function createPublicUpload(req, res) {
   }
 
   try {
+    const employeeId = Number(body.employee_id);
+    const attendanceDate = getPhilippineDate(body.capture_datetime);
+    const attendanceType = String(body.attendance_type || "").toLowerCase();
+    const existingRecords = await AttendanceRecord.getAllAttendanceRecords({
+      employee_id: employeeId,
+      attendance_date: attendanceDate,
+    });
+    const existingRecord = existingRecords[0];
+
+    if (
+      existingRecord &&
+      attendanceType.includes("time in") &&
+      existingRecord.check_in
+    ) {
+      return res.status(409).json({
+        error: "This employee already has a Time In record for today.",
+      });
+    }
+
+    if (
+      existingRecord &&
+      attendanceType.includes("time out") &&
+      existingRecord.check_out
+    ) {
+      return res.status(409).json({
+        error: "This employee already has a Time Out record for today.",
+      });
+    }
+
     if (!req.file?.buffer) {
       return res.status(400).json({ error: "An image file is required." });
     }
