@@ -473,7 +473,8 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
           'VL',
           'SL',
           'ML',
-          'PL'
+          'PL',
+          'DO'
         )
       ),
 
@@ -544,6 +545,18 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
         updated_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (employee_id, schedule_date),
         CHECK (time_out > time_in)
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS employee_day_offs (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        day_off_date DATE NOT NULL,
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (employee_id, day_off_date)
       );
     `);
 
@@ -745,6 +758,19 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
   idx_employee_leaves_employee_date
   ON employee_leaves(employee_id, leave_date);
 `);
+
+    await client.query(`
+      DO $$
+      BEGIN
+        ALTER TABLE employee_leaves
+          DROP CONSTRAINT IF EXISTS employee_leaves_leave_type_check;
+        ALTER TABLE employee_leaves
+          ADD CONSTRAINT employee_leaves_leave_type_check
+          CHECK (leave_type IN ('VL', 'SL', 'ML', 'PL', 'DO'));
+      EXCEPTION
+        WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
 
     console.log("Database initialized successfully.");
 

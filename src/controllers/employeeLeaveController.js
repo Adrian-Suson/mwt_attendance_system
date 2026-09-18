@@ -18,6 +18,10 @@ function getPhilippineDayName(dateKey) {
  * Every selected date becomes:
  * status = on_leave
  */
+function getAttendanceStatusForLeaveType(leaveType) {
+  return leaveType === "DO" ? "day_off" : "on_leave";
+}
+
 async function syncAttendanceForDates(
   employeeId,
   dates,
@@ -34,11 +38,11 @@ async function syncAttendanceForDates(
     const attendanceData = {
       employee_id: employeeId,
       attendance_date: attendanceDate,
-      status: "on_leave",
+      status: getAttendanceStatusForLeaveType(leaveType),
       source: "employee-leave",
       notes:
         notes ||
-        `Leave: ${leaveType}`,
+        (leaveType === "DO" ? "Day Off" : `Leave: ${leaveType}`),
     };
 
     if (existing[0]) {
@@ -161,9 +165,9 @@ async function createEmployeeLeaves(req, res) {
     });
   }
 
-  if (!leave_type) {
+  if (!["VL", "SL", "ML", "PL", "DO"].includes(leave_type)) {
     return res.status(400).json({
-      error: "leave_type is required",
+      error: "leave_type must be VL, SL, ML, PL, or DO",
     });
   }
 
@@ -191,21 +195,24 @@ async function createEmployeeLeaves(req, res) {
       );
 
     /**
-     * Don't allow scheduled day off
-     * to be recorded as leave.
+     * Don't allow the weekly scheduled day off
+     * to be recorded as VL/SL/ML/PL.
+     * Day Off (DO) dates are allowed.
      */
     const dayOff =
       employee.day_off || "Sunday";
 
-    for (const dateKey of normalizedDates) {
-      if (
-        getPhilippineDayName(dateKey) === dayOff
-      ) {
-        return res.status(400).json({
-          error:
-            `${dateKey} is the employee's scheduled ` +
-            `day off (${dayOff}) and cannot be marked as leave.`,
-        });
+    if (leave_type !== "DO") {
+      for (const dateKey of normalizedDates) {
+        if (
+          getPhilippineDayName(dateKey) === dayOff
+        ) {
+          return res.status(400).json({
+            error:
+              `${dateKey} is the employee's scheduled ` +
+              `day off (${dayOff}) and cannot be marked as leave.`,
+          });
+        }
       }
     }
 

@@ -6,6 +6,39 @@ const {
 } = require("../services/faceRecognitionService");
 const { uploadToGoogleDrivePath } = require("../services/googleDriveService");
 
+const FACE_TEMPLATE_CACHE_TTL_MS = Number(
+  process.env.FACE_TEMPLATE_CACHE_TTL_MS || 60000,
+);
+let faceTemplateCache = null;
+let faceTemplateCacheExpiresAt = 0;
+let faceTemplateCachePromise = null;
+
+async function getActiveFaceTemplates() {
+  const now = Date.now();
+  if (faceTemplateCache && faceTemplateCacheExpiresAt > now) {
+    return faceTemplateCache;
+  }
+
+  if (!faceTemplateCachePromise) {
+    faceTemplateCachePromise = Employee.getAllActiveFaceEmbeddings()
+      .then((templates) => {
+        faceTemplateCache = templates;
+        faceTemplateCacheExpiresAt = Date.now() + FACE_TEMPLATE_CACHE_TTL_MS;
+        return templates;
+      })
+      .finally(() => {
+        faceTemplateCachePromise = null;
+      });
+  }
+
+  return faceTemplateCachePromise;
+}
+
+function invalidateFaceTemplateCache() {
+  faceTemplateCache = null;
+  faceTemplateCacheExpiresAt = 0;
+}
+
 function getEmployeeName(employee) {
   return [employee.first_name, employee.middle_name, employee.last_name]
     .filter(Boolean)
@@ -48,7 +81,7 @@ async function registerEmployeeFace(req, res) {
       });
     }
 
-    const existingTemplates = await Employee.getAllActiveFaceEmbeddings();
+    const existingTemplates = await getActiveFaceTemplates();
     const existingMatch = matchEmbedding(
       detected.descriptor,
       existingTemplates,
@@ -84,6 +117,7 @@ async function registerEmployeeFace(req, res) {
       "face-api.js",
       driveFile,
     );
+    invalidateFaceTemplateCache();
 
     console.log(`[FACE] Registered employee ${employeeId}`);
     return res.status(201).json({
@@ -127,7 +161,7 @@ async function recognizeFace(req, res) {
       });
     }
 
-    const templates = await Employee.getAllActiveFaceEmbeddings();
+    const templates = await getActiveFaceTemplates();
     const { match, best } = matchEmbedding(detected.descriptor, templates);
 
     if (!match) {
@@ -189,6 +223,7 @@ async function deleteEmployeeFaces(req, res) {
 
   try {
     const deleted = await Employee.deleteEmployeeFaceEmbeddings(employeeId);
+    invalidateFaceTemplateCache();
     return res.json({ ok: true, employee_id: employeeId, deleted });
   } catch (error) {
     return res.status(500).json({ error: error.message });
