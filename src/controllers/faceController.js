@@ -54,6 +54,31 @@ function validateFaceInput(req, res) {
   return true;
 }
 
+function getDescriptorInput(req, res) {
+  if (req.body?.descriptor === undefined) return null;
+
+  let descriptor = req.body.descriptor;
+  if (typeof descriptor === "string") {
+    try {
+      descriptor = JSON.parse(descriptor);
+    } catch {
+      res.status(400).json({ error: "The face descriptor is invalid." });
+      return false;
+    }
+  }
+
+  if (
+    !Array.isArray(descriptor) ||
+    descriptor.length !== 128 ||
+    descriptor.some((value) => !Number.isFinite(Number(value)))
+  ) {
+    res.status(400).json({ error: "The face descriptor is invalid." });
+    return false;
+  }
+
+  return descriptor.map(Number);
+}
+
 async function registerEmployeeFace(req, res) {
   if (!validateFaceInput(req, res)) return;
 
@@ -142,27 +167,38 @@ async function registerEmployeeFace(req, res) {
 }
 
 async function recognizeFace(req, res) {
-  if (!validateFaceInput(req, res)) return;
-
   try {
-    const detected = await detectImage(req.file.buffer);
-    if (detected.multipleFaces) {
-      return res.status(422).json({
-        recognized: false,
-        code: "MULTIPLE_FACES",
-        error: "Only one face is allowed for attendance recognition.",
-      });
-    }
-    if (!detected.descriptor) {
-      return res.status(422).json({
-        recognized: false,
-        code: "NO_FACE",
-        error: "No clear face was detected.",
-      });
+    const inputDescriptor = getDescriptorInput(req, res);
+    if (inputDescriptor === false) return;
+
+    let descriptor = inputDescriptor;
+    let faceDimensions = null;
+
+    if (!descriptor) {
+      if (!validateFaceInput(req, res)) return;
+
+      const detected = await detectImage(req.file.buffer);
+      if (detected.multipleFaces) {
+        return res.status(422).json({
+          recognized: false,
+          code: "MULTIPLE_FACES",
+          error: "Only one face is allowed for attendance recognition.",
+        });
+      }
+      if (!detected.descriptor) {
+        return res.status(422).json({
+          recognized: false,
+          code: "NO_FACE",
+          error: "No clear face was detected.",
+        });
+      }
+
+      descriptor = detected.descriptor;
+      faceDimensions = detected.faceDimensions;
     }
 
     const templates = await getActiveFaceTemplates();
-    const { match, best } = matchEmbedding(detected.descriptor, templates);
+    const { match, best } = matchEmbedding(descriptor, templates);
 
     if (!match) {
       return res.json({
@@ -182,7 +218,7 @@ async function recognizeFace(req, res) {
       employee_name: getEmployeeName(employee),
       similarity: match.similarity,
       model: match.model,
-      face_dimensions: detected.faceDimensions,
+      face_dimensions: faceDimensions,
     });
   } catch (error) {
     console.error("[FACE] Recognition failed:", error.message);
