@@ -11,6 +11,7 @@ async function listEmployeeSchedules(req, res) {
     });
     res.json(rows);
   } catch (error) {
+    console.error("[SCHEDULE] Failed to save schedules:", error.message);
     res.status(500).json({ error: error.message });
   }
 }

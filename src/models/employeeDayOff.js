@@ -3,7 +3,7 @@ const { getClient } = require("../db");
 async function listDayOffs(employeeId) {
   const client = getClient();
   const result = await client.query(
-    `SELECT id, employee_id, day_off_date, notes
+    `SELECT id, employee_id, TO_CHAR(day_off_date, 'YYYY-MM-DD') AS day_off_date, notes
      FROM employee_day_offs
      WHERE employee_id = $1
      ORDER BY day_off_date ASC`,
@@ -11,7 +11,7 @@ async function listDayOffs(employeeId) {
   );
   return result.rows.map((row) => ({
     ...row,
-    day_off_date: String(row.day_off_date).slice(0, 10),
+    day_off_date: row.day_off_date,
   }));
 }
 

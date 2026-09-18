@@ -548,6 +548,47 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
       );
     `);
 
+    // Keep databases created by older versions compatible with date-based schedules.
+    await client.query(`
+      ALTER TABLE employee_schedules
+      ADD COLUMN IF NOT EXISTS schedule_date DATE;
+    `);
+    await client.query(`
+      ALTER TABLE employee_schedules
+      ADD COLUMN IF NOT EXISTS notes TEXT;
+    `);
+    await client.query(`
+      ALTER TABLE employee_schedules
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+    `);
+    await client.query(`
+      ALTER TABLE employee_schedules
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+    `);
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'employee_schedules' AND column_name = 'day_of_week'
+        ) THEN
+          ALTER TABLE employee_schedules ALTER COLUMN day_of_week DROP NOT NULL;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'employee_schedules' AND column_name = 'is_day_off'
+        ) THEN
+          ALTER TABLE employee_schedules ALTER COLUMN is_day_off DROP NOT NULL;
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS
+      uq_employee_schedules_employee_date
+      ON employee_schedules(employee_id, schedule_date)
+      ;
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS employee_day_offs (
         id SERIAL PRIMARY KEY,

@@ -1,9 +1,7 @@
 const { getClient } = require("../db");
 
 function normalizeDateKeys(dates) {
-  return [...new Set(
-    dates.map((d) => String(d).slice(0, 10))
-  )].sort();
+  return [...new Set(dates.map((d) => String(d).slice(0, 10)))].sort();
 }
 
 /**
@@ -40,16 +38,14 @@ async function getEmployeeLeaves(filters = {}) {
   }
 
   const where =
-    conditions.length > 0
-      ? `WHERE ${conditions.join(" AND ")}`
-      : "";
+    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const result = await client.query(
     `SELECT
        el.id,
        el.employee_id,
        e.first_name || ' ' || e.last_name AS employee_name,
-       el.leave_date,
+      TO_CHAR(el.leave_date, 'YYYY-MM-DD') AS leave_date,
        el.leave_type,
        el.notes,
        el.created_at,
@@ -64,10 +60,9 @@ async function getEmployeeLeaves(filters = {}) {
 
   return result.rows.map((row) => ({
     ...row,
-    leave_date: String(row.leave_date).slice(0, 10),
+    leave_date: row.leave_date,
   }));
 }
-
 
 /**
  * GET ONE EMPLOYEE LEAVE
@@ -80,7 +75,7 @@ async function getEmployeeLeaveById(id) {
        el.id,
        el.employee_id,
        e.first_name || ' ' || e.last_name AS employee_name,
-       el.leave_date,
+      TO_CHAR(el.leave_date, 'YYYY-MM-DD') AS leave_date,
        el.leave_type,
        el.notes,
        el.created_at,
@@ -98,10 +93,9 @@ async function getEmployeeLeaveById(id) {
 
   return {
     ...result.rows[0],
-    leave_date: String(result.rows[0].leave_date).slice(0, 10),
+    leave_date: result.rows[0].leave_date,
   };
 }
-
 
 /**
  * CREATE EMPLOYEE LEAVES
@@ -112,7 +106,7 @@ async function getEmployeeLeaveById(id) {
  *   employee_id: 1,
  *   dates: [
  *     "2026-09-16",
- *     "2026-09-17",
+ *     "2026-09-17",  
  *     "2026-09-19"
  *   ],
  *   leave_type: "VL",
@@ -162,12 +156,7 @@ async function createEmployeeLeaves(data) {
            notes = EXCLUDED.notes,
            updated_at = NOW()
          RETURNING *`,
-        [
-          employeeId,
-          leaveDate,
-          leaveType,
-          notes,
-        ],
+        [employeeId, leaveDate, leaveType, notes],
       );
 
       inserted.push(result.rows[0]);
@@ -182,31 +171,20 @@ async function createEmployeeLeaves(data) {
   }
 }
 
-
 /**
  * UPDATE ONE LEAVE DATE
  */
 async function updateEmployeeLeave(id, updates) {
   const client = getClient();
 
-  const allowed = [
-    "employee_id",
-    "leave_date",
-    "leave_type",
-    "notes",
-  ];
+  const allowed = ["employee_id", "leave_date", "leave_type", "notes"];
 
   const sets = [];
   const values = [];
   let idx = 1;
 
   for (const key of allowed) {
-    if (
-      Object.prototype.hasOwnProperty.call(
-        updates,
-        key,
-      )
-    ) {
+    if (Object.prototype.hasOwnProperty.call(updates, key)) {
       sets.push(`${key} = $${idx}`);
       values.push(updates[key]);
       idx++;
@@ -230,7 +208,6 @@ async function updateEmployeeLeave(id, updates) {
   return getEmployeeLeaveById(id);
 }
 
-
 /**
  * DELETE ONE LEAVE DATE
  */
@@ -246,7 +223,6 @@ async function deleteEmployeeLeave(id) {
 
   return result.rows[0] || null;
 }
-
 
 /**
  * DELETE MULTIPLE LEAVE DATES
@@ -264,15 +240,11 @@ async function deleteEmployeeLeaves(employeeId, dates) {
      WHERE employee_id = $1
        AND leave_date = ANY($2::date[])
      RETURNING *`,
-    [
-      employeeId,
-      normalizedDates,
-    ],
+    [employeeId, normalizedDates],
   );
 
   return result.rows;
 }
-
 
 module.exports = {
   getEmployeeLeaves,
