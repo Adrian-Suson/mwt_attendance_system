@@ -34,4 +34,19 @@ async function createDayOffs(employeeId, dates, notes) {
   return saved;
 }
 
-module.exports = { listDayOffs, createDayOffs };
+async function deleteDayOffs(employeeId, dates) {
+  const client = getClient();
+  const normalizedDates = [
+    ...new Set(dates.map((value) => String(value).slice(0, 10))),
+  ];
+  const result = await client.query(
+    `DELETE FROM employee_day_offs
+     WHERE employee_id = $1
+       AND day_off_date = ANY($2::date[])
+     RETURNING *`,
+    [employeeId, normalizedDates],
+  );
+  return result.rows;
+}
+
+module.exports = { listDayOffs, createDayOffs, deleteDayOffs };

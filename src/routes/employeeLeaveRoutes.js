@@ -10,6 +10,7 @@ const {
   createEmployeeLeaves,
   updateEmployeeLeave,
   deleteEmployeeLeave,
+  deleteEmployeeLeaves,
 } = require("../controllers/employeeLeaveController");
 
 router.use(requireAuth, allowRoles(ROLES.GCM, ROLES.CM));
@@ -22,6 +23,7 @@ router.post("/", createEmployeeLeaves);
 
 router.put("/:id", updateEmployeeLeave);
 
+router.delete("/", deleteEmployeeLeaves);
 router.delete("/:id", deleteEmployeeLeave);
 
 module.exports = router;

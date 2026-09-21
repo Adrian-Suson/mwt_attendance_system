@@ -352,10 +352,39 @@ async function deleteEmployeeLeave(req, res) {
 }
 
 
+async function deleteEmployeeLeaves(req, res) {
+  const employeeId = Number(req.body.employee_id);
+  const dates = Array.isArray(req.body.dates) ? req.body.dates : [];
+
+  if (!employeeId || !dates.length) {
+    return res.status(400).json({
+      error: "employee_id and dates are required",
+    });
+  }
+
+  try {
+    const employee = await Employee.getEmployeeById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ error: "Employee not found" });
+    }
+
+    const deleted = await EmployeeLeave.deleteEmployeeLeaves(employeeId, dates);
+    res.json({
+      ok: true,
+      message: "Leave dates deleted",
+      deleted,
+    });
+  } catch (err) {
+    console.error("Delete employee leaves error:", err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   listEmployeeLeaves,
   getEmployeeLeave,
   createEmployeeLeaves,
   updateEmployeeLeave,
   deleteEmployeeLeave,
+  deleteEmployeeLeaves,
 };
