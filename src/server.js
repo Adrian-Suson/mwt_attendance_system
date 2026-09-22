@@ -160,8 +160,24 @@ app.use("/api/employee-chapels", employeeChapelRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/face", faceRoutes);
 
+/*
+ * FAVICON
+ */
+app.get("/favicon.ico", (req, res) => {
+  const faviconPath = path.join(frontendDistPath, "favicon.ico");
+
+  if (fs.existsSync(faviconPath)) {
+    return res.sendFile(faviconPath);
+  }
+
+  return res.status(204).end();
+});
+
+/*
+ * REACT / VITE SPA FALLBACK
+ */
 if (fs.existsSync(frontendDistPath)) {
-  app.get(/^(?!\/api|\/uploads).*/, (req, res) => {
+  app.get(/^\/(?!api(?:\/|$)|uploads(?:\/|$)).*/, (req, res) => {
     res.sendFile(path.join(frontendDistPath, "index.html"));
   });
 }
