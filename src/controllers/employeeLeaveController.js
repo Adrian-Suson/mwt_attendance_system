@@ -2,16 +2,6 @@ const EmployeeLeave = require("../models/employeeLeave");
 const AttendanceRecord = require("../models/attendanceRecord");
 const Employee = require("../models/employee");
 
-function getPhilippineDayName(dateKey) {
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    timeZone: "Asia/Manila",
-  }).format(
-    new Date(`${dateKey}T12:00:00+08:00`)
-  );
-}
-
-
 /**
  * Sync selected leave dates into attendance.
  *
@@ -22,27 +12,19 @@ function getAttendanceStatusForLeaveType(leaveType) {
   return leaveType === "DO" ? "day_off" : "on_leave";
 }
 
-async function syncAttendanceForDates(
-  employeeId,
-  dates,
-  leaveType,
-  notes,
-) {
+async function syncAttendanceForDates(employeeId, dates, leaveType, notes) {
   for (const attendanceDate of dates) {
-    const existing =
-      await AttendanceRecord.getAllAttendanceRecords({
-        employee_id: employeeId,
-        attendance_date: attendanceDate,
-      });
+    const existing = await AttendanceRecord.getAllAttendanceRecords({
+      employee_id: employeeId,
+      attendance_date: attendanceDate,
+    });
 
     const attendanceData = {
       employee_id: employeeId,
       attendance_date: attendanceDate,
       status: getAttendanceStatusForLeaveType(leaveType),
       source: "employee-leave",
-      notes:
-        notes ||
-        (leaveType === "DO" ? "Day Off" : `Leave: ${leaveType}`),
+      notes: notes || (leaveType === "DO" ? "Day Off" : `Leave: ${leaveType}`),
     };
 
     if (existing[0]) {
@@ -51,13 +33,10 @@ async function syncAttendanceForDates(
         attendanceData,
       );
     } else {
-      await AttendanceRecord.createAttendanceRecord(
-        attendanceData,
-      );
+      await AttendanceRecord.createAttendanceRecord(attendanceData);
     }
   }
 }
-
 
 /**
  * GET LEAVES
@@ -79,17 +58,12 @@ async function listEmployeeLeaves(req, res) {
         ? Number(req.query.employee_id)
         : undefined,
 
-      start_date:
-        req.query.start_date || undefined,
+      start_date: req.query.start_date || undefined,
 
-      end_date:
-        req.query.end_date || undefined,
+      end_date: req.query.end_date || undefined,
     };
 
-    const rows =
-      await EmployeeLeave.getEmployeeLeaves(
-        filters,
-      );
+    const rows = await EmployeeLeave.getEmployeeLeaves(filters);
 
     res.json(rows);
   } catch (err) {
@@ -100,7 +74,6 @@ async function listEmployeeLeaves(req, res) {
     });
   }
 }
-
 
 /**
  * GET ONE LEAVE
@@ -115,8 +88,7 @@ async function getEmployeeLeave(req, res) {
       });
     }
 
-    const leave =
-      await EmployeeLeave.getEmployeeLeaveById(id);
+    const leave = await EmployeeLeave.getEmployeeLeaveById(id);
 
     if (!leave) {
       return res.status(404).json({
@@ -133,7 +105,6 @@ async function getEmployeeLeave(req, res) {
     });
   }
 }
-
 
 /**
  * CREATE LEAVE DATES
@@ -152,12 +123,7 @@ async function getEmployeeLeave(req, res) {
  * }
  */
 async function createEmployeeLeaves(req, res) {
-  const {
-    employee_id,
-    dates,
-    leave_type,
-    notes,
-  } = req.body;
+  const { employee_id, dates, leave_type, notes } = req.body;
 
   if (!employee_id) {
     return res.status(400).json({
@@ -178,10 +144,7 @@ async function createEmployeeLeaves(req, res) {
   }
 
   try {
-    const employee =
-      await Employee.getEmployeeById(
-        employee_id,
-      );
+    const employee = await Employee.getEmployeeById(employee_id);
 
     if (!employee) {
       return res.status(404).json({
@@ -189,40 +152,14 @@ async function createEmployeeLeaves(req, res) {
       });
     }
 
-    const normalizedDates =
-      EmployeeLeave.normalizeDateKeys(
-        dates,
-      );
+    const normalizedDates = EmployeeLeave.normalizeDateKeys(dates);
 
-    /**
-     * Don't allow the weekly scheduled day off
-     * to be recorded as VL/SL/ML/PL.
-     * Day Off (DO) dates are allowed.
-     */
-    const dayOff =
-      employee.day_off || "Sunday";
-
-    if (leave_type !== "DO") {
-      for (const dateKey of normalizedDates) {
-        if (
-          getPhilippineDayName(dateKey) === dayOff
-        ) {
-          return res.status(400).json({
-            error:
-              `${dateKey} is the employee's scheduled ` +
-              `day off (${dayOff}) and cannot be marked as leave.`,
-          });
-        }
-      }
-    }
-
-    const created =
-      await EmployeeLeave.createEmployeeLeaves({
-        employee_id,
-        dates: normalizedDates,
-        leave_type,
-        notes,
-      });
+    const created = await EmployeeLeave.createEmployeeLeaves({
+      employee_id,
+      dates: normalizedDates,
+      leave_type,
+      notes,
+    });
 
     /**
      * Immediately put the selected dates
@@ -240,17 +177,13 @@ async function createEmployeeLeaves(req, res) {
       leaves: created,
     });
   } catch (err) {
-    console.error(
-      "Create employee leaves error:",
-      err,
-    );
+    console.error("Create employee leaves error:", err);
 
     res.status(500).json({
       error: err.message,
     });
   }
 }
-
 
 /**
  * UPDATE ONE LEAVE DATE
@@ -265,11 +198,7 @@ async function updateEmployeeLeave(req, res) {
       });
     }
 
-    const updated =
-      await EmployeeLeave.updateEmployeeLeave(
-        id,
-        req.body,
-      );
+    const updated = await EmployeeLeave.updateEmployeeLeave(id, req.body);
 
     if (!updated) {
       return res.status(404).json({
@@ -289,17 +218,13 @@ async function updateEmployeeLeave(req, res) {
 
     res.json(updated);
   } catch (err) {
-    console.error(
-      "Update employee leave error:",
-      err,
-    );
+    console.error("Update employee leave error:", err);
 
     res.status(500).json({
       error: err.message,
     });
   }
 }
-
 
 /**
  * DELETE ONE LEAVE DATE
@@ -314,10 +239,7 @@ async function deleteEmployeeLeave(req, res) {
       });
     }
 
-    const removed =
-      await EmployeeLeave.deleteEmployeeLeave(
-        id,
-      );
+    const removed = await EmployeeLeave.deleteEmployeeLeave(id);
 
     if (!removed) {
       return res.status(404).json({
@@ -340,17 +262,13 @@ async function deleteEmployeeLeave(req, res) {
       leave: removed,
     });
   } catch (err) {
-    console.error(
-      "Delete employee leave error:",
-      err,
-    );
+    console.error("Delete employee leave error:", err);
 
     res.status(500).json({
       error: err.message,
     });
   }
 }
-
 
 async function deleteEmployeeLeaves(req, res) {
   const employeeId = Number(req.body.employee_id);

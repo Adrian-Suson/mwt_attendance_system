@@ -89,9 +89,8 @@ async function getPublicEmployeeNames() {
   const client = getClient();
   const result = await client.query(
     `SELECT e.id, e.first_name, e.middle_name, e.last_name,
-            e.time_in, e.time_out,
-            COALESCE(s.time_in, e.time_in) AS scheduled_time_in,
-            COALESCE(s.time_out, e.time_out) AS scheduled_time_out
+            s.time_in AS scheduled_time_in,
+            s.time_out AS scheduled_time_out
     FROM employees e
      LEFT JOIN employee_schedules s
        ON s.employee_id = e.id
@@ -193,9 +192,9 @@ async function createEmployee(data) {
   const result = await client.query(
     `INSERT INTO employees (
        first_name, middle_name, last_name, email, phone, role,
-       chapel_id, employment_type, status, day_off, time_in, time_out, hire_date
+      chapel_id, employment_type, status, hire_date
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       first_name,
@@ -207,9 +206,6 @@ async function createEmployee(data) {
       data.chapel_id || null,
       data.employment_type || "Regular",
       data.status || "active",
-      data.day_off || "Sunday",
-      data.time_in || "08:00:00",
-      data.time_out || "17:00:00",
       data.hire_date || null,
     ],
   );
@@ -228,9 +224,6 @@ async function updateEmployee(id, updates, chapelId) {
     "phone",
     "role",
     "employment_type",
-    "day_off",
-    "time_in",
-    "time_out",
     "chapel_id",
     "status",
     "hire_date",

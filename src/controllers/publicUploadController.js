@@ -63,6 +63,16 @@ function getPhilippineDate(dateValue) {
   return formatter.format(date);
 }
 
+function getManilaClockTime(date) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Manila",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function parseClockToMinutes(value) {
   if (!value) return null;
 
@@ -224,14 +234,14 @@ async function syncAttendanceFromUpload(data) {
     data.attendance_type &&
     data.attendance_type.toLowerCase().includes("time in")
   ) {
-    payload.check_in = captureDate.toISOString();
+    payload.check_in = getManilaClockTime(captureDate);
   }
 
   if (
     data.attendance_type &&
     data.attendance_type.toLowerCase().includes("time out")
   ) {
-    payload.check_out = captureDate.toISOString();
+    payload.check_out = getManilaClockTime(captureDate);
   }
 
   if (dayRecords.length > 0) {

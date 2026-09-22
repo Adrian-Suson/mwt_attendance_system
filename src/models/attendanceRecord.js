@@ -1,5 +1,12 @@
 const { getClient } = require("../db");
 
+function normalizeClockTime(value) {
+  if (!value) return null;
+  const text = String(value).trim();
+  const timestampMatch = text.match(/(?:T|\s)(\d{2}:\d{2}(?::\d{2})?)/);
+  return (timestampMatch ? timestampMatch[1] : text).slice(0, 8);
+}
+
 async function getAllAttendanceRecords(filters = {}) {
   const client = getClient();
   const conditions = [];
@@ -98,8 +105,8 @@ async function createAttendanceRecord(data) {
       data.employee_id,
       data.attendance_date,
       data.status,
-      data.check_in || null,
-      data.check_out || null,
+      normalizeClockTime(data.check_in),
+      normalizeClockTime(data.check_out),
       data.working_hours ?? 0,
       data.source || "manual",
       data.notes || null,
@@ -127,7 +134,11 @@ async function updateAttendanceRecord(id, updates) {
   for (const key of allowed) {
     if (Object.prototype.hasOwnProperty.call(updates, key)) {
       sets.push(`${key} = $${idx}`);
-      values.push(updates[key]);
+      values.push(
+        key === "check_in" || key === "check_out"
+          ? normalizeClockTime(updates[key])
+          : updates[key],
+      );
       idx += 1;
     }
   }

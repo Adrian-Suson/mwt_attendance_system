@@ -36,6 +36,10 @@ app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 600,
+    // Read-only screens can make several authenticated requests while loading.
+    // Login and write endpoints remain rate-limited by this middleware/routes.
+    skip: (req) =>
+      req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS",
     standardHeaders: "draft-8",
     legacyHeaders: false,
   }),

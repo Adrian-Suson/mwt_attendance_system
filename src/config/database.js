@@ -176,7 +176,7 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
          * - day_off: weekday name
          * - time_in / time_out: default daily times
          */
-        day_off VARCHAR(10) NOT NULL
+        day_off VARCHAR(10)
           DEFAULT 'Sunday'
           CHECK (
             day_off IN (
@@ -184,10 +184,10 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
             )
           ),
 
-        time_in TIME NOT NULL
+        time_in TIME
           DEFAULT '08:00:00',
 
-        time_out TIME NOT NULL
+        time_out TIME
           DEFAULT '17:00:00',
 
         status VARCHAR(30) NOT NULL
@@ -242,6 +242,15 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
     );
     await client.query(
       `ALTER TABLE employees ADD COLUMN IF NOT EXISTS time_out TIME;`,
+    );
+    await client.query(
+      `ALTER TABLE employees ALTER COLUMN day_off DROP NOT NULL;`,
+    );
+    await client.query(
+      `ALTER TABLE employees ALTER COLUMN time_in DROP NOT NULL;`,
+    );
+    await client.query(
+      `ALTER TABLE employees ALTER COLUMN time_out DROP NOT NULL;`,
     );
     await client.query(
       `ALTER TABLE employees ADD COLUMN IF NOT EXISTS status VARCHAR(30);`,
@@ -416,9 +425,9 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
             )
           ),
 
-        check_in TIMESTAMPTZ,
+        check_in TIME,
 
-        check_out TIMESTAMPTZ,
+        check_out TIME,
 
         working_hours NUMERIC(5,2)
           DEFAULT 0,
@@ -439,6 +448,16 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
           attendance_date
         )
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE attendance_records
+        ALTER COLUMN check_in TYPE TIME
+          USING CASE WHEN check_in IS NULL THEN NULL
+            ELSE (check_in AT TIME ZONE 'Asia/Manila')::time END,
+        ALTER COLUMN check_out TYPE TIME
+          USING CASE WHEN check_out IS NULL THEN NULL
+            ELSE (check_out AT TIME ZONE 'Asia/Manila')::time END
     `);
 
     /* ========================================================
@@ -724,48 +743,6 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
       idx_employee_chapels_chapel
       ON employee_chapels(chapel_id);
     `);
-
-    /*
-     * Attempt to migrate any existing rows from the old employee_schedules
-     * table (if present) into the new per-employee `day_off`, `time_in`,
-     * and `time_out` columns. Best-effort: if table missing or rows
-     * malformed, continue without failing startup.
-     */
-    try {
-      const old = await client.query(
-        `SELECT employee_id, day_of_week, time_in, time_out, is_day_off FROM employee_schedules`,
-      );
-      if (old && old.rowCount > 0) {
-        const byEmp = {};
-        for (const r of old.rows) {
-          const id = String(r.employee_id);
-          byEmp[id] = byEmp[id] || [];
-          byEmp[id].push(r);
-        }
-        for (const [empId, rows] of Object.entries(byEmp)) {
-          // find a day marked as day off
-          const offRow = rows.find((x) => x.is_day_off === true);
-          const day_off = offRow ? offRow.day_of_week : "Sunday";
-
-          // find first non-day-off row for default times
-          const workRow =
-            rows.find((x) => !x.is_day_off && x.time_in && x.time_out) ||
-            rows[0];
-          const time_in = workRow ? workRow.time_in : "08:00:00";
-          const time_out = workRow ? workRow.time_out : "17:00:00";
-
-          await client.query(
-            `UPDATE employees SET day_off = $1, time_in = $2, time_out = $3 WHERE id = $4`,
-            [day_off, time_in, time_out, empId],
-          );
-        }
-        console.log(
-          `Migrated schedule rows into employees.day_off/time_in/time_out`,
-        );
-      }
-    } catch (e) {
-      // old table not present or migration failed — continue
-    }
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS

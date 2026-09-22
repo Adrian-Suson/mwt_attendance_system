@@ -78,7 +78,6 @@ async function createEmployee(req, res) {
       phone,
       chapel_id,
       employment_type: req.body.employment_type,
-      day_off: req.body.day_off,
       time_in: req.body.time_in,
       time_out: req.body.time_out,
       status,
