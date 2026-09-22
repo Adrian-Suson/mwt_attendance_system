@@ -21,7 +21,7 @@
   "author": "",
   "license": "MIT",
   "engines": {
-    "node": "20.x"
+    "node": "24.x"
   },
   "dependencies": {
     "@canvas/image": "^2.0.0",
