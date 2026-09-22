@@ -3,10 +3,6 @@ const fs = require("fs");
 const faceapi = require("face-api.js");
 const { imageFromBuffer, getImageData } = require("@canvas/image");
 
-const configuredModelDir = process.env.FACE_MODEL_DIR || "models/face-api";
-const MODEL_DIR = path.isAbsolute(configuredModelDir)
-  ? configuredModelDir
-  : path.resolve(__dirname, "../..", configuredModelDir);
 const FACE_DETECTOR = process.env.FACE_DETECTOR || "tiny";
 const FACE_TINY_INPUT_SIZE = Number(process.env.FACE_TINY_INPUT_SIZE || 320);
 const REQUIRED_MODEL_FILES = [
@@ -26,6 +22,20 @@ const REQUIRED_MODEL_FILES = [
   "face_recognition_model-shard1",
   "face_recognition_model-shard2",
 ];
+const configuredModelDir = process.env.FACE_MODEL_DIR || "models/face-api";
+const modelDirCandidates = [
+  path.isAbsolute(configuredModelDir)
+    ? configuredModelDir
+    : path.resolve(__dirname, "../..", configuredModelDir),
+  path.resolve(__dirname, "../..", "models/face-api"),
+  path.resolve(__dirname, "../..", "public/models/face-api"),
+];
+const MODEL_DIR =
+  modelDirCandidates.find((directory) =>
+    REQUIRED_MODEL_FILES.every((fileName) =>
+      fs.existsSync(path.join(directory, fileName)),
+    ),
+  ) || modelDirCandidates[0];
 const FACE_MATCH_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || 0.55);
 const FACE_MIN_CONFIDENCE = Number(process.env.FACE_MIN_CONFIDENCE || 0.6);
 const FACE_INPUT_MAX_SIZE = Number(process.env.FACE_INPUT_MAX_SIZE || 640);
