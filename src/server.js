@@ -20,7 +20,12 @@ if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
+// ============================================================
+// PATHS
+// ============================================================
+
 const frontendDistPath = path.join(__dirname, "../public");
+const uploadsPath = path.join(__dirname, "../uploads");
 
 // ============================================================
 // CORS
@@ -28,17 +33,24 @@ const frontendDistPath = path.join(__dirname, "../public");
 
 const configuredCorsOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
-  .map((origin) => origin.trim().replace(/\/*+$/, ""))
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
   .filter(Boolean);
 
 const allowAllCorsOrigins = configuredCorsOrigins.includes("*");
 
 const corsOrigin = configuredCorsOrigins.length
   ? (origin, callback) => {
+      // Allow requests without an Origin header
+      // such as server-to-server requests.
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      const normalizedOrigin = origin.replace(/\/+$/, "");
+
       if (
         allowAllCorsOrigins ||
-        !origin ||
-        configuredCorsOrigins.includes(origin.replace(/\/*+$/, ""))
+        configuredCorsOrigins.includes(normalizedOrigin)
       ) {
         return callback(null, true);
       }
@@ -48,10 +60,11 @@ const corsOrigin = configuredCorsOrigins.length
   : true;
 
 // ============================================================
-// MIDDLEWARE
+// BASIC MIDDLEWARE
 // ============================================================
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 app.use(
   helmet({
@@ -64,8 +77,7 @@ app.use(
     windowMs: 15 * 60 * 1000,
     limit: 600,
 
-    // Read-only screens can make several authenticated requests
-    // while loading.
+    // GET/HEAD/OPTIONS are read-only or browser preflight requests.
     skip: (req) =>
       req.method === "GET" ||
       req.method === "HEAD" ||
@@ -80,6 +92,7 @@ app.use(
   cors({
     origin: corsOrigin,
     credentials: true,
+
     methods: [
       "GET",
       "HEAD",
@@ -89,7 +102,11 @@ app.use(
       "DELETE",
       "OPTIONS",
     ],
-    allowedHeaders: ["Content-Type", "Authorization"],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ],
   }),
 );
 
@@ -98,33 +115,51 @@ app.use(
 // ============================================================
 
 // Uploaded files
-app.use(
-  "/uploads",
-  express.static(path.join(__dirname, "../uploads")),
-);
+if (fs.existsSync(uploadsPath)) {
+  app.use(
+    "/uploads",
+    express.static(uploadsPath),
+  );
+}
 
 // React/Vite frontend
 if (fs.existsSync(frontendDistPath)) {
-  app.use(
-    "/assets",
-    express.static(path.join(frontendDistPath, "assets"), {
-      fallthrough: false,
-    }),
+  const assetsPath = path.join(
+    frontendDistPath,
+    "assets",
   );
 
-  app.use(express.static(frontendDistPath));
+  if (fs.existsSync(assetsPath)) {
+    app.use(
+      "/assets",
+      express.static(assetsPath),
+    );
+  }
+
+  app.use(
+    express.static(frontendDistPath),
+  );
 }
 
 // ============================================================
-// DATABASE / ROUTES
+// DATABASE
 // ============================================================
 
-let client;
+let client = null;
+let initializationPromise = null;
 
-const { initializeDatabase } = require("./config/database");
-const { setClient } = require("./db");
+const {
+  initializeDatabase,
+} = require("./config/database");
 
-// Routes
+const {
+  setClient,
+} = require("./db");
+
+// ============================================================
+// ROUTES
+// ============================================================
+
 const chapelRoutes = require("./routes/chapelRoutes");
 const employeeRoutes = require("./routes/employeeRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -135,35 +170,52 @@ const employeeDayOffRoutes = require("./routes/employeeDayOffRoutes");
 const publicUploadRoutes = require("./routes/publicUploadRoutes");
 const authRoutes = require("./routes/authRoutes");
 const employeeChapelRoutes = require("./routes/employeeChapelRoutes");
-const reportRoutes = require("./routes/reportRoutes");
 const faceRoutes = require("./routes/faceRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 
-const { getJwtSecret } = require("./config/security");
+// ============================================================
+// SERVICES
+// ============================================================
+
+const {
+  getJwtSecret,
+} = require("./config/security");
 
 const {
   initializeFaceRecognition,
 } = require("./services/faceRecognitionService");
 
 // ============================================================
-// INITIALIZATION
+// APPLICATION INITIALIZATION
 // ============================================================
 
-let initializationPromise = null;
-
 async function initializeApp() {
-  // Prevent multiple simultaneous database initialization calls
+  // Prevent multiple requests from initializing
+  // the database at the same time.
   if (initializationPromise) {
     return initializationPromise;
   }
 
   initializationPromise = (async () => {
+    console.log("[APP] Initializing application...");
+
+    // --------------------------------------------------------
+    // Production configuration
+    // --------------------------------------------------------
+
     if (process.env.NODE_ENV === "production") {
       getJwtSecret();
 
       if (!configuredCorsOrigins.length) {
-        throw new Error("CORS_ORIGIN must be set in production.");
+        throw new Error(
+          "CORS_ORIGIN must be set in production.",
+        );
       }
     }
+
+    // --------------------------------------------------------
+    // Database configuration validation
+    // --------------------------------------------------------
 
     if (
       !process.env.DATABASE_URL &&
@@ -174,78 +226,119 @@ async function initializeApp() {
       );
     }
 
+    // --------------------------------------------------------
+    // PostgreSQL
+    // --------------------------------------------------------
+
+    client = await initializeDatabase(
+      dbConfig,
+      dbLogConfig,
+      AUTO_CREATE_DB,
+    );
+
+    // Make database client available
+    // to the rest of the application.
+    setClient(client);
+
+    console.log(
+      "[APP] PostgreSQL initialized successfully.",
+    );
+
+    // --------------------------------------------------------
+    // Face recognition
+    // --------------------------------------------------------
+
     try {
-      client = await initializeDatabase(
-        dbConfig,
-        dbLogConfig,
-        AUTO_CREATE_DB,
+      await initializeFaceRecognition();
+
+      console.log(
+        "[FACE] Face recognition initialized.",
       );
-
-      // Share the connected client with models/controllers
-      setClient(client);
-
-      // Reports require the database client
-      app.use("/api/reports", reportRoutes(client));
-
-      // Face recognition is optional
-      try {
-        await initializeFaceRecognition();
-      } catch (faceError) {
-        console.error(
-          "[FACE] Recognition is unavailable:",
-          faceError.message,
-        );
-
-        console.error(
-          "[FACE] Attendance remains available, but face-api.js models must be present before enabling face endpoints.",
-        );
-      }
-
-      console.log("Application initialization completed.");
-
-      return client;
-    } catch (err) {
+    } catch (faceError) {
       console.error(
-        "Failed to initialize database:",
-        err.message,
+        "[FACE] Face recognition is unavailable:",
+        faceError.message,
       );
 
-      throw err;
+      console.error(
+        "[FACE] Attendance system will continue running.",
+      );
     }
-  })();
+
+    console.log(
+      "[APP] Application initialization completed.",
+    );
+
+    return client;
+  })().catch((error) => {
+    // Allow a later request to retry initialization
+    // if the first initialization failed.
+    initializationPromise = null;
+
+    console.error(
+      "[APP] Initialization failed:",
+      error,
+    );
+
+    throw error;
+  });
 
   return initializationPromise;
 }
 
 // ============================================================
-// API ROUTES
+// INITIALIZATION MIDDLEWARE
 // ============================================================
+//
+// Every /api request waits for:
+// 1. PostgreSQL connection
+// 2. db client registration
+// 3. face recognition initialization attempt
+//
+// This is important for Vercel serverless execution.
+//
 
-app.get("/api", async (req, res) => {
+app.use("/api", async (req, res, next) => {
   try {
     await initializeApp();
-
-    res.json({
-      message: "Attendance System API is running",
-      database: dbConfig.database,
-    });
+    next();
   } catch (error) {
-    console.error("[API] Initialization error:", error);
+    console.error(
+      "[API] Initialization error:",
+      error,
+    );
 
     res.status(500).json({
       ok: false,
       message: "Application initialization failed",
-      error: error.message,
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message,
     });
   }
 });
 
+// ============================================================
+// API STATUS
+// ============================================================
+
+app.get("/api", (req, res) => {
+  res.json({
+    ok: true,
+    message: "Attendance System API is running",
+    database: dbConfig.database,
+  });
+});
+
+// ============================================================
+// HEALTH CHECK
+// ============================================================
+
 app.get("/api/health", async (req, res) => {
   try {
-    await initializeApp();
-
     const result = await client.query(
-      "SELECT NOW() as current_time",
+      "SELECT NOW() AS current_time",
     );
 
     res.json({
@@ -254,12 +347,18 @@ app.get("/api/health", async (req, res) => {
       currentTime: result.rows[0].current_time,
     });
   } catch (error) {
-    console.error("[HEALTH] Database connection failed:", error);
+    console.error(
+      "[HEALTH] Database error:",
+      error,
+    );
 
     res.status(500).json({
       ok: false,
       message: "Database connection failed",
-      error: error.message,
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message,
     });
   }
 });
@@ -268,22 +367,88 @@ app.get("/api/health", async (req, res) => {
 // APPLICATION ROUTES
 // ============================================================
 
-app.use("/api/chapels", chapelRoutes);
-app.use("/api/employees", employeeRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/attendance-records", attendanceRecordRoutes);
+app.use(
+  "/api/chapels",
+  chapelRoutes,
+);
 
-app.use("/api/employee-leave", employeeLeaveRoutes);
-app.use("/api/employee-Leave", employeeLeaveRoutes);
+app.use(
+  "/api/employees",
+  employeeRoutes,
+);
 
-app.use("/api/employee-schedules", employeeScheduleRoutes);
-app.use("/api/employee-day-offs", employeeDayOffRoutes);
+app.use(
+  "/api/users",
+  userRoutes,
+);
 
-app.use("/api/public-uploads", publicUploadRoutes);
-app.use("/api/employee-chapels", employeeChapelRoutes);
+app.use(
+  "/api/attendance-records",
+  attendanceRecordRoutes,
+);
 
-app.use("/api/auth", authRoutes);
-app.use("/api/face", faceRoutes);
+app.use(
+  "/api/employee-leave",
+  employeeLeaveRoutes,
+);
+
+app.use(
+  "/api/employee-Leave",
+  employeeLeaveRoutes,
+);
+
+app.use(
+  "/api/employee-schedules",
+  employeeScheduleRoutes,
+);
+
+app.use(
+  "/api/employee-day-offs",
+  employeeDayOffRoutes,
+);
+
+app.use(
+  "/api/public-uploads",
+  publicUploadRoutes,
+);
+
+app.use(
+  "/api/employee-chapels",
+  employeeChapelRoutes,
+);
+
+app.use(
+  "/api/auth",
+  authRoutes,
+);
+
+app.use(
+  "/api/face",
+  faceRoutes,
+);
+
+// Reports require the initialized database client.
+//
+// Instead of mounting this during initialization,
+// mount a wrapper that uses the current client.
+
+app.use(
+  "/api/reports",
+  (req, res, next) => {
+    if (!client) {
+      return res.status(503).json({
+        ok: false,
+        message: "Database is not initialized.",
+      });
+    }
+
+    return reportRoutes(client)(
+      req,
+      res,
+      next,
+    );
+  },
+);
 
 // ============================================================
 // FAVICON
@@ -299,6 +464,7 @@ app.get("/favicon.ico", (req, res) => {
     return res.sendFile(faviconPath);
   }
 
+  // No favicon is not an application error.
   return res.status(204).end();
 });
 
@@ -310,34 +476,84 @@ if (fs.existsSync(frontendDistPath)) {
   app.get(
     /^\/(?!api(?:\/|$)|uploads(?:\/|$)).*/,
     (req, res) => {
-      res.sendFile(
-        path.join(frontendDistPath, "index.html"),
+      const indexPath = path.join(
+        frontendDistPath,
+        "index.html",
       );
+
+      if (!fs.existsSync(indexPath)) {
+        return res.status(404).send(
+          "Frontend build not found.",
+        );
+      }
+
+      return res.sendFile(indexPath);
     },
   );
 }
 
 // ============================================================
-// VERCEL EXPORT
+// ERROR HANDLER
 // ============================================================
 
+app.use(
+  (error, req, res, next) => {
+    console.error(
+      "[SERVER ERROR]",
+      error,
+    );
+
+    if (res.headersSent) {
+      return next(error);
+    }
+
+    res.status(500).json({
+      ok: false,
+      message: "Internal server error",
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message,
+    });
+  },
+);
+
+// ============================================================
+// VERCEL EXPORT
+// ============================================================
+//
+// IMPORTANT:
 // Vercel needs the Express application exported.
+// Do NOT remove this.
+//
+
 module.exports = app;
 
 // ============================================================
-// LOCAL DEVELOPMENT SERVER
+// LOCAL DEVELOPMENT
 // ============================================================
+//
+// When you run:
+//     node src/server.js
+//
+// the server starts normally.
+//
+// Vercel imports this file and uses the exported `app`
+// instead, so app.listen() is NOT executed there.
+//
 
-// Only start app.listen() when running this file directly.
-// Vercel will NOT execute app.listen().
 if (require.main === module) {
   initializeApp()
     .then(() => {
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(
-          `Server is running on port ${PORT}`,
-        );
-      });
+      app.listen(
+        PORT,
+        "0.0.0.0",
+        () => {
+          console.log(
+            `Server is running on port ${PORT}`,
+          );
+        },
+      );
     })
     .catch((error) => {
       console.error(
