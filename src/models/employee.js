@@ -104,7 +104,7 @@ async function getPublicEmployeeNames() {
 async function getEmployeeFaceEmbeddings(employeeId) {
   const client = getClient();
   const result = await client.query(
-    `SELECT id, employee_id, embedding, model, created_at, updated_at
+    `SELECT id, employee_id, embedding, model, drive_file_id, drive_file_url, created_at, updated_at
      FROM employee_face_embeddings
      WHERE employee_id = $1
      ORDER BY id ASC`,

@@ -4,7 +4,10 @@ const {
   matchEmbedding,
   getFaceConfiguration,
 } = require("../services/faceRecognitionService");
-const { uploadToGoogleDrivePath } = require("../services/googleDriveService");
+const {
+  uploadToGoogleDrivePath,
+  downloadFromGoogleDrive,
+} = require("../services/googleDriveService");
 
 const FACE_TEMPLATE_CACHE_TTL_MS = Number(
   process.env.FACE_TEMPLATE_CACHE_TTL_MS || 60000,
@@ -124,6 +127,24 @@ async function registerEmployeeFace(req, res) {
         code: "FACE_ALREADY_REGISTERED",
         employee_id: existingMatch.match.employee_id,
         distance: existingMatch.match.distance,
+        similarity: existingMatch.match.similarity,
+      });
+    }
+
+    if (
+      existingMatch.best?.ambiguous &&
+      String(existingMatch.best.employee_id) !== String(employeeId)
+    ) {
+      const matchedEmployee = await Employee.getEmployeeById(
+        existingMatch.best.employee_id,
+      );
+      return res.status(409).json({
+        error: `This face is too similar to ${getEmployeeName(matchedEmployee)}. Use a clearer reference photo before registering it.`,
+        code: "FACE_MATCH_AMBIGUOUS",
+        employee_id: existingMatch.best.employee_id,
+        distance: existingMatch.best.distance,
+        similarity: existingMatch.best.similarity,
+        next_distance: existingMatch.best.nextDistance,
       });
     }
 
@@ -203,8 +224,9 @@ async function recognizeFace(req, res) {
     if (!match) {
       return res.json({
         recognized: false,
-        code: "NOT_RECOGNIZED",
+        code: best?.ambiguous ? "AMBIGUOUS_FACE" : "NOT_RECOGNIZED",
         similarity: best?.similarity || 0,
+        ambiguous: Boolean(best?.ambiguous),
         configuration: getFaceConfiguration(),
       });
     }
@@ -246,9 +268,46 @@ async function getEmployeeFaceStatus(req, res) {
       employee_id: employeeId,
       count: rows.length,
       model: rows[0]?.model || "face-api.js",
+      faces: rows.map((row) => ({
+        id: row.id,
+        model: row.model,
+        drive_file_id: row.drive_file_id,
+        drive_file_url: row.drive_file_url,
+        created_at: row.created_at,
+      })),
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
+  }
+}
+
+async function streamEmployeeFaceImage(req, res) {
+  const employeeId = Number(req.params.employeeId);
+  const embeddingId = Number(req.params.embeddingId);
+  if (!employeeId || !embeddingId) {
+    return res.status(400).json({ error: "Invalid employee or face ID." });
+  }
+
+  try {
+    const rows = await Employee.getEmployeeFaceEmbeddings(employeeId);
+    const face = rows.find((row) => row.id === embeddingId);
+    if (!face?.drive_file_url) {
+      return res.status(404).json({ error: "Enrolled face image not found." });
+    }
+
+    const { stream, mimeType } = await downloadFromGoogleDrive(
+      face.drive_file_url,
+    );
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    stream.on("error", (error) => {
+      if (!res.headersSent) res.status(502).json({ error: error.message });
+      else res.destroy(error);
+    });
+    stream.pipe(res);
+  } catch (error) {
+    console.error("Failed to stream employee face image:", error);
+    res.status(502).json({ error: error.message });
   }
 }
 
@@ -270,5 +329,6 @@ module.exports = {
   registerEmployeeFace,
   recognizeFace,
   getEmployeeFaceStatus,
+  streamEmployeeFaceImage,
   deleteEmployeeFaces,
 };

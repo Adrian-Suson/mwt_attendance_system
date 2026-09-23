@@ -37,7 +37,11 @@ const MODEL_DIR =
     ),
   ) || modelDirCandidates[0];
 const FACE_MATCH_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || 0.55);
-const FACE_MIN_CONFIDENCE = Number(process.env.FACE_MIN_CONFIDENCE || 0.6);
+const FACE_MATCH_MARGIN = Number(process.env.FACE_MATCH_MARGIN || 0.08);
+const FACE_MIN_CONFIDENCE = Math.min(
+  0.99,
+  Math.max(0.01, Number(process.env.FACE_MIN_CONFIDENCE || 0.6)),
+);
 const FACE_INPUT_MAX_SIZE = Number(process.env.FACE_INPUT_MAX_SIZE || 640);
 
 let initializationPromise = null;
@@ -173,39 +177,66 @@ function matchEmbedding(descriptor, templates) {
   );
   if (!validTemplates.length) return { match: null, best: null };
 
-  const labeledDescriptors = validTemplates.map(
-    (template) =>
-      new faceapi.LabeledFaceDescriptors(String(template.employee_id), [
+  const candidateMatches = validTemplates
+    .map((template) => ({
+      employee_id: Number(template.employee_id),
+      distance: faceapi.euclideanDistance(
+        new Float32Array(descriptor),
         new Float32Array(template.embedding),
-      ]),
-  );
-  const matcher = new faceapi.FaceMatcher(
-    labeledDescriptors,
-    FACE_MATCH_THRESHOLD,
-  );
-  const best = matcher.findBestMatch(new Float32Array(descriptor));
+      ),
+      model: template.model,
+    }))
+    .sort((left, right) => left.distance - right.distance);
+  const best = candidateMatches[0];
   const distance = Number(best.distance);
   const similarity = Math.max(0, 1 - distance);
+  const nextDifferentEmployee = candidateMatches.find(
+    (candidate) => candidate.employee_id !== best.employee_id,
+  );
+  const isAmbiguous = Boolean(
+    distance <= FACE_MATCH_THRESHOLD &&
+    nextDifferentEmployee &&
+    nextDifferentEmployee.distance - best.distance < FACE_MATCH_MARGIN,
+  );
 
   console.log(`[FACE] Candidates: ${validTemplates.length}`);
-  console.log(`[FACE] Best match: ${best.label}`);
+  console.log(`[FACE] Best match: ${best.employee_id}`);
   console.log(`[FACE] Distance: ${distance}`);
   console.log(`[FACE] Threshold: ${FACE_MATCH_THRESHOLD}`);
+  if (nextDifferentEmployee) {
+    console.log(
+      `[FACE] Next employee distance: ${nextDifferentEmployee.distance}`,
+    );
+    console.log(
+      `[FACE] Match margin: ${nextDifferentEmployee.distance - distance}`,
+    );
+  }
 
-  if (best.label === "unknown") {
-    console.log("[FACE] Result: NOT_RECOGNIZED");
-    return { match: null, best: { distance, similarity } };
+  if (distance > FACE_MATCH_THRESHOLD || isAmbiguous) {
+    console.log(
+      `[FACE] Result: ${isAmbiguous ? "AMBIGUOUS" : "NOT_RECOGNIZED"}`,
+    );
+    return {
+      match: null,
+      best: {
+        employee_id: best.employee_id,
+        distance,
+        similarity,
+        ambiguous: isAmbiguous,
+        nextDistance: nextDifferentEmployee?.distance ?? null,
+      },
+    };
   }
 
   console.log("[FACE] Result: MATCH");
   return {
     match: {
-      employee_id: Number(best.label),
+      employee_id: best.employee_id,
       distance,
       similarity,
-      model: "face-api.js-ssd-mobilenetv1-face-landmark-68-face-recognition",
+      model: best.model || "face-api.js-face-recognition",
     },
-    best: { distance, similarity },
+    best: { employee_id: best.employee_id, distance, similarity },
   };
 }
 
@@ -219,6 +250,7 @@ function getFaceConfiguration() {
     inputMaxSize: FACE_INPUT_MAX_SIZE,
     tinyInputSize: FACE_TINY_INPUT_SIZE,
     matchDistanceThreshold: FACE_MATCH_THRESHOLD,
+    matchDistanceMargin: FACE_MATCH_MARGIN,
     backend: faceapi.tf.getBackend(),
   };
 }

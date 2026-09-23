@@ -5,6 +5,7 @@ const {
   registerEmployeeFace,
   recognizeFace,
   getEmployeeFaceStatus,
+  streamEmployeeFaceImage,
   deleteEmployeeFaces,
 } = require("../controllers/faceController");
 
@@ -29,6 +30,12 @@ router.post(
   registerEmployeeFace,
 );
 router.post("/recognize", upload.single("image"), recognizeFace);
+router.get(
+  "/:employeeId/:embeddingId/image",
+  requireAuth,
+  allowRoles(ROLES.GCM, ROLES.CM, ROLES.FCR),
+  streamEmployeeFaceImage,
+);
 router.get(
   "/:employeeId",
   requireAuth,
