@@ -539,6 +539,8 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
 
         file_path TEXT NOT NULL,
 
+        location VARCHAR(255),
+
         capture_datetime TIMESTAMPTZ,
 
         uploaded_by VARCHAR(255),
@@ -551,6 +553,10 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
           DEFAULT NOW()
       );
     `);
+
+    await client.query(
+      `ALTER TABLE public_uploads ADD COLUMN IF NOT EXISTS location VARCHAR(255);`,
+    );
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS employee_schedules (

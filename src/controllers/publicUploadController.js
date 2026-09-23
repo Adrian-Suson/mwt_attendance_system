@@ -335,6 +335,7 @@ async function createPublicUpload(req, res) {
   }
 
   if (
+    !body.employee_id ||
     !body.employee_name ||
     !body.attendance_type ||
     !body.file_name ||
@@ -342,7 +343,7 @@ async function createPublicUpload(req, res) {
   ) {
     return res.status(400).json({
       error:
-        "employee_name, attendance_type, file_name, and file_path are required",
+        "employee_id, employee_name, attendance_type, file_name, and file_path are required",
     });
   }
 
@@ -352,8 +353,15 @@ async function createPublicUpload(req, res) {
     return res.status(422).json({ error: captureTimeError });
   }
 
+  const employeeId = Number(body.employee_id);
+  if (!Number.isInteger(employeeId) || employeeId <= 0) {
+    return res
+      .status(400)
+      .json({ error: "A valid employee must be selected." });
+  }
+
   const scheduleError = await validateTimeOutSchedule(
-    Number(body.employee_id),
+    employeeId,
     body.attendance_type,
     new Date(body.capture_datetime),
   );
@@ -363,7 +371,23 @@ async function createPublicUpload(req, res) {
   }
 
   try {
-    const employeeId = Number(body.employee_id);
+    const employee = await Employee.getEmployeeById(employeeId);
+    if (!employee) {
+      return res
+        .status(404)
+        .json({ error: "Selected employee was not found." });
+    }
+
+    const chapelName = String(employee.chapel_name || "").trim();
+    const chapelLocation = String(employee.chapel_location || "").trim();
+    body.location = [chapelName, chapelLocation].filter(Boolean).join(" - ");
+    if (!body.location) {
+      return res.status(422).json({
+        error:
+          "The selected employee does not have a chapel or location assignment.",
+      });
+    }
+
     const attendanceDate = getPhilippineDate(body.capture_datetime);
     const attendanceType = String(body.attendance_type || "").toLowerCase();
     const existingRecords = await AttendanceRecord.getAllAttendanceRecords({
@@ -396,7 +420,6 @@ async function createPublicUpload(req, res) {
       return res.status(400).json({ error: "An image file is required." });
     }
 
-    const employee = await Employee.getEmployeeById(Number(body.employee_id));
     const chapelFolderName = getChapelFolderName(employee?.chapel_name);
 
     if (!chapelFolderName) {

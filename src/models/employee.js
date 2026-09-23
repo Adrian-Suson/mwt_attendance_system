@@ -168,7 +168,7 @@ async function getEmployeeById(id, chapelId) {
       ))`
     : "";
   const result = await client.query(
-    `SELECT e.*, c.name AS chapel_name
+    `SELECT e.*, c.name AS chapel_name, c.location AS chapel_location
      FROM employees e
      LEFT JOIN chapels c ON c.id = e.chapel_id
     WHERE e.id = $1 ${scope}`,

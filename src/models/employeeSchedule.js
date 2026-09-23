@@ -60,4 +60,14 @@ async function upsertSchedules(employeeId, schedules) {
   return saved;
 }
 
-module.exports = { listSchedules, upsertSchedules };
+async function deleteSchedules(employeeId, dates) {
+  const client = getClient();
+  const result = await client.query(
+    `DELETE FROM employee_schedules
+     WHERE employee_id = $1 AND schedule_date = ANY($2::date[])`,
+    [employeeId, dates],
+  );
+  return result.rowCount;
+}
+
+module.exports = { listSchedules, upsertSchedules, deleteSchedules };

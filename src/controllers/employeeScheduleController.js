@@ -52,4 +52,25 @@ async function createEmployeeSchedules(req, res) {
   }
 }
 
-module.exports = { listEmployeeSchedules, createEmployeeSchedules };
+async function deleteEmployeeSchedules(req, res) {
+  const employeeId = Number(req.body.employee_id);
+  const dates = Array.isArray(req.body.dates) ? req.body.dates : [];
+  if (!employeeId || !dates.length) {
+    return res
+      .status(400)
+      .json({ error: "employee_id and dates are required" });
+  }
+
+  try {
+    const deleted = await EmployeeSchedule.deleteSchedules(employeeId, dates);
+    res.json({ ok: true, deleted });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+module.exports = {
+  listEmployeeSchedules,
+  createEmployeeSchedules,
+  deleteEmployeeSchedules,
+};
