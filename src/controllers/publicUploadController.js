@@ -330,6 +330,32 @@ async function streamPublicUploadImage(req, res) {
 async function createPublicUpload(req, res) {
   const body = { ...req.body };
 
+  const hasLatitude =
+    body.photo_latitude !== undefined && body.photo_latitude !== "";
+  const hasLongitude =
+    body.photo_longitude !== undefined && body.photo_longitude !== "";
+  const photoLatitude = hasLatitude ? Number(body.photo_latitude) : null;
+  const photoLongitude = hasLongitude ? Number(body.photo_longitude) : null;
+
+  if (
+    hasLatitude !== hasLongitude ||
+    (hasLatitude &&
+      (!Number.isFinite(photoLatitude) ||
+        photoLatitude < -90 ||
+        photoLatitude > 90)) ||
+    (hasLongitude &&
+      (!Number.isFinite(photoLongitude) ||
+        photoLongitude < -180 ||
+        photoLongitude > 180))
+  ) {
+    return res
+      .status(400)
+      .json({ error: "A valid latitude and longitude pair is required." });
+  }
+
+  body.photo_latitude = photoLatitude;
+  body.photo_longitude = photoLongitude;
+
   if (req.file) {
     body.file_name = body.file_name || req.file.originalname;
   }

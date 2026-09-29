@@ -51,9 +51,10 @@ async function createPublicUpload(data) {
   const result = await client.query(
     `INSERT INTO public_uploads (
        employee_id, employee_name, attendance_type,
-      file_name, file_path, location, capture_datetime, uploaded_by, attendance_record_id
+      file_name, file_path, location, photo_latitude, photo_longitude,
+      capture_datetime, uploaded_by, attendance_record_id
      )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
       data.employee_id || null,
@@ -62,6 +63,8 @@ async function createPublicUpload(data) {
       data.file_name,
       data.file_path,
       data.location || null,
+      data.photo_latitude ?? null,
+      data.photo_longitude ?? null,
       data.capture_datetime || null,
       data.uploaded_by || null,
       data.attendance_record_id || null,
@@ -79,6 +82,8 @@ async function updatePublicUpload(id, updates) {
     "file_name",
     "file_path",
     "location",
+    "photo_latitude",
+    "photo_longitude",
     "capture_datetime",
     "uploaded_by",
     "attendance_record_id",

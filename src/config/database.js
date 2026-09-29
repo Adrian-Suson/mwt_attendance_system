@@ -532,6 +532,12 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
     );
 
     await client.query(`
+      ALTER TABLE public_uploads
+      ADD COLUMN IF NOT EXISTS photo_latitude DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS photo_longitude DOUBLE PRECISION;
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS employee_schedules (
         id SERIAL PRIMARY KEY,
         employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
