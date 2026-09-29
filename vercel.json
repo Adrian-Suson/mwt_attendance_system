@@ -3,10 +3,7 @@
   "builds": [
     {
       "src": "src/server.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["models/face-api/**"]
-      }
+      "use": "@vercel/node"
     }
   ],
   "routes": [

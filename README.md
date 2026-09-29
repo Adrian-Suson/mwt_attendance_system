@@ -24,58 +24,6 @@ npm install
 npm start
 ```
 
-## Backend face recognition
-
-Face recognition runs inside Express using `face-api.js`, Tiny Face Detector by default for faster CPU processing, 68-point landmarks, and the face recognition descriptor model. It uses pure JavaScript TensorFlow.js CPU execution, so it does not require `@tensorflow/tfjs-node`, Python, or a separate service. The server loads one shared model instance during startup. Enrollment images are uploaded from memory to Google Drive under `DTR photo/Facetemplate`; PostgreSQL stores the descriptor plus the Drive file ID/link.
-
-The existing employee primary key is `employees.id`. Startup creates `employee_face_embeddings`, allowing multiple reference descriptors per employee:
-
-```text
-employee_face_embeddings(id, employee_id, embedding, model, drive_file_id, drive_file_url, created_at, updated_at)
-```
-
-Register a reference photo as an authenticated GCM or CM user:
-
-```text
-POST /api/face/register/:employeeId
-FormData: image=<photo>
-```
-
-Each registered image is saved in the configured Drive root folder using this nested path:
-
-```text
-GOOGLE_DRIVE_FOLDER_ID/
-└── DTR photo/
-	└── Facetemplate/
-```
-
-Recognize an attendance selfie through Express:
-
-```text
-POST /api/face/recognize
-FormData: image=<photo>
-```
-
-The recognition response contains only the matched employee ID, display name, model, and similarity. It never returns the stored embedding. The public DTR flow passes a recognized employee into the existing attendance and schedule logic.
-
-### Model files
-
-The required model files are stored in `Backend/models/face-api`:
-
-- `ssd_mobilenetv1_model-weights_manifest.json` and shards
-- `face_landmark_68_model-weights_manifest.json` and shard
-- `face_recognition_model-weights_manifest.json` and shards
-
-The directory can be changed with `FACE_MODEL_DIR`.
-
-Keep the complete `Backend/models/face-api` directory in the deployment artifact. With `FACE_MODEL_DIR=models/face-api`, the application resolves it relative to the Backend directory, even when the hosting platform starts Node from the repository root. Do not place these model files in frontend `public` or omit them from the deployment package.
-
-### Matching threshold
-
-face-api.js uses Euclidean descriptor distance. The initial `FACE_MATCH_THRESHOLD` is `0.55`; lower distance is a stronger match. The endpoint returns both distance and a display-only similarity value (`1 - distance`). Calibrate with genuine photos from different angles and lighting plus impostor/unknown photos. Choose a threshold that rejects impostor distances while retaining genuine matches; do not copy thresholds from another model or image pipeline.
-
-Calibrate it with real data before production: collect several different lighting and angle photos for each enrolled employee, plus photos of other employees and unknown people. Record genuine-match and impostor similarity values, then choose a threshold that rejects impostors while retaining genuine matches. Do not compare thresholds from a different Human model or match configuration.
-
 ## Google Drive image uploads
 
 The public upload endpoint sends images to Google Drive before saving the attendance record. Configure one of these server-side credentials in `.env`:

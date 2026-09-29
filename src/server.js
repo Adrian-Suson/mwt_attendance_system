@@ -5,12 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const cors = require("cors");
 
-const {
-  PORT,
-  AUTO_CREATE_DB,
-  dbConfig,
-  dbLogConfig,
-} = require("./config");
+const { PORT, AUTO_CREATE_DB, dbConfig, dbLogConfig } = require("./config");
 
 const app = express();
 
@@ -79,9 +74,7 @@ app.use(
 
     // GET/HEAD/OPTIONS are read-only or browser preflight requests.
     skip: (req) =>
-      req.method === "GET" ||
-      req.method === "HEAD" ||
-      req.method === "OPTIONS",
+      req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS",
 
     standardHeaders: "draft-8",
     legacyHeaders: false,
@@ -93,20 +86,9 @@ app.use(
     origin: corsOrigin,
     credentials: true,
 
-    methods: [
-      "GET",
-      "HEAD",
-      "PUT",
-      "PATCH",
-      "POST",
-      "DELETE",
-      "OPTIONS",
-    ],
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
 
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-    ],
+    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
 
@@ -116,29 +98,18 @@ app.use(
 
 // Uploaded files
 if (fs.existsSync(uploadsPath)) {
-  app.use(
-    "/uploads",
-    express.static(uploadsPath),
-  );
+  app.use("/uploads", express.static(uploadsPath));
 }
 
 // React/Vite frontend
 if (fs.existsSync(frontendDistPath)) {
-  const assetsPath = path.join(
-    frontendDistPath,
-    "assets",
-  );
+  const assetsPath = path.join(frontendDistPath, "assets");
 
   if (fs.existsSync(assetsPath)) {
-    app.use(
-      "/assets",
-      express.static(assetsPath),
-    );
+    app.use("/assets", express.static(assetsPath));
   }
 
-  app.use(
-    express.static(frontendDistPath),
-  );
+  app.use(express.static(frontendDistPath));
 }
 
 // ============================================================
@@ -148,13 +119,9 @@ if (fs.existsSync(frontendDistPath)) {
 let client = null;
 let initializationPromise = null;
 
-const {
-  initializeDatabase,
-} = require("./config/database");
+const { initializeDatabase } = require("./config/database");
 
-const {
-  setClient,
-} = require("./db");
+const { setClient } = require("./db");
 
 // ============================================================
 // ROUTES
@@ -170,20 +137,13 @@ const employeeDayOffRoutes = require("./routes/employeeDayOffRoutes");
 const publicUploadRoutes = require("./routes/publicUploadRoutes");
 const authRoutes = require("./routes/authRoutes");
 const employeeChapelRoutes = require("./routes/employeeChapelRoutes");
-const faceRoutes = require("./routes/faceRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 
 // ============================================================
 // SERVICES
 // ============================================================
 
-const {
-  getJwtSecret,
-} = require("./config/security");
-
-const {
-  initializeFaceRecognition,
-} = require("./services/faceRecognitionService");
+const { getJwtSecret } = require("./config/security");
 
 // ============================================================
 // APPLICATION INITIALIZATION
@@ -207,9 +167,7 @@ async function initializeApp() {
       getJwtSecret();
 
       if (!configuredCorsOrigins.length) {
-        throw new Error(
-          "CORS_ORIGIN must be set in production.",
-        );
+        throw new Error("CORS_ORIGIN must be set in production.");
       }
     }
 
@@ -217,10 +175,7 @@ async function initializeApp() {
     // Database configuration validation
     // --------------------------------------------------------
 
-    if (
-      !process.env.DATABASE_URL &&
-      typeof dbConfig.password !== "string"
-    ) {
+    if (!process.env.DATABASE_URL && typeof dbConfig.password !== "string") {
       throw new Error(
         "DB password must be a string. Check your DB_PASSWORD environment variable.",
       );
@@ -230,44 +185,15 @@ async function initializeApp() {
     // PostgreSQL
     // --------------------------------------------------------
 
-    client = await initializeDatabase(
-      dbConfig,
-      dbLogConfig,
-      AUTO_CREATE_DB,
-    );
+    client = await initializeDatabase(dbConfig, dbLogConfig, AUTO_CREATE_DB);
 
     // Make database client available
     // to the rest of the application.
     setClient(client);
 
-    console.log(
-      "[APP] PostgreSQL initialized successfully.",
-    );
+    console.log("[APP] PostgreSQL initialized successfully.");
 
-    // --------------------------------------------------------
-    // Face recognition
-    // --------------------------------------------------------
-
-    try {
-      await initializeFaceRecognition();
-
-      console.log(
-        "[FACE] Face recognition initialized.",
-      );
-    } catch (faceError) {
-      console.error(
-        "[FACE] Face recognition is unavailable:",
-        faceError.message,
-      );
-
-      console.error(
-        "[FACE] Attendance system will continue running.",
-      );
-    }
-
-    console.log(
-      "[APP] Application initialization completed.",
-    );
+    console.log("[APP] Application initialization completed.");
 
     return client;
   })().catch((error) => {
@@ -275,10 +201,7 @@ async function initializeApp() {
     // if the first initialization failed.
     initializationPromise = null;
 
-    console.error(
-      "[APP] Initialization failed:",
-      error,
-    );
+    console.error("[APP] Initialization failed:", error);
 
     throw error;
   });
@@ -293,7 +216,6 @@ async function initializeApp() {
 // Every /api request waits for:
 // 1. PostgreSQL connection
 // 2. db client registration
-// 3. face recognition initialization attempt
 //
 // This is important for Vercel serverless execution.
 //
@@ -303,10 +225,7 @@ app.use("/api", async (req, res, next) => {
     await initializeApp();
     next();
   } catch (error) {
-    console.error(
-      "[API] Initialization error:",
-      error,
-    );
+    console.error("[API] Initialization error:", error);
 
     res.status(500).json({
       ok: false,
@@ -337,9 +256,7 @@ app.get("/api", (req, res) => {
 
 app.get("/api/health", async (req, res) => {
   try {
-    const result = await client.query(
-      "SELECT NOW() AS current_time",
-    );
+    const result = await client.query("SELECT NOW() AS current_time");
 
     res.json({
       ok: true,
@@ -347,10 +264,7 @@ app.get("/api/health", async (req, res) => {
       currentTime: result.rows[0].current_time,
     });
   } catch (error) {
-    console.error(
-      "[HEALTH] Database error:",
-      error,
-    );
+    console.error("[HEALTH] Database error:", error);
 
     res.status(500).json({
       ok: false,
@@ -367,98 +281,50 @@ app.get("/api/health", async (req, res) => {
 // APPLICATION ROUTES
 // ============================================================
 
-app.use(
-  "/api/chapels",
-  chapelRoutes,
-);
+app.use("/api/chapels", chapelRoutes);
 
-app.use(
-  "/api/employees",
-  employeeRoutes,
-);
+app.use("/api/employees", employeeRoutes);
 
-app.use(
-  "/api/users",
-  userRoutes,
-);
+app.use("/api/users", userRoutes);
 
-app.use(
-  "/api/attendance-records",
-  attendanceRecordRoutes,
-);
+app.use("/api/attendance-records", attendanceRecordRoutes);
 
-app.use(
-  "/api/employee-leave",
-  employeeLeaveRoutes,
-);
+app.use("/api/employee-leave", employeeLeaveRoutes);
 
-app.use(
-  "/api/employee-Leave",
-  employeeLeaveRoutes,
-);
+app.use("/api/employee-Leave", employeeLeaveRoutes);
 
-app.use(
-  "/api/employee-schedules",
-  employeeScheduleRoutes,
-);
+app.use("/api/employee-schedules", employeeScheduleRoutes);
 
-app.use(
-  "/api/employee-day-offs",
-  employeeDayOffRoutes,
-);
+app.use("/api/employee-day-offs", employeeDayOffRoutes);
 
-app.use(
-  "/api/public-uploads",
-  publicUploadRoutes,
-);
+app.use("/api/public-uploads", publicUploadRoutes);
 
-app.use(
-  "/api/employee-chapels",
-  employeeChapelRoutes,
-);
+app.use("/api/employee-chapels", employeeChapelRoutes);
 
-app.use(
-  "/api/auth",
-  authRoutes,
-);
-
-app.use(
-  "/api/face",
-  faceRoutes,
-);
+app.use("/api/auth", authRoutes);
 
 // Reports require the initialized database client.
 //
 // Instead of mounting this during initialization,
 // mount a wrapper that uses the current client.
 
-app.use(
-  "/api/reports",
-  (req, res, next) => {
-    if (!client) {
-      return res.status(503).json({
-        ok: false,
-        message: "Database is not initialized.",
-      });
-    }
+app.use("/api/reports", (req, res, next) => {
+  if (!client) {
+    return res.status(503).json({
+      ok: false,
+      message: "Database is not initialized.",
+    });
+  }
 
-    return reportRoutes(client)(
-      req,
-      res,
-      next,
-    );
-  },
-);
+  return reportRoutes(client)(req, res, next);
+});
 
 // ============================================================
 // FAVICON
 // ============================================================
 
 app.get("/favicon.ico", (req, res) => {
-  const faviconPath = path.join(
-    frontendDistPath,
-    "favicon.ico",
-  );
+  const faviconPath = path.join(frontendDistPath, "favicon.ico");
 
   if (fs.existsSync(faviconPath)) {
     return res.sendFile(faviconPath);
@@ -473,50 +339,37 @@ app.get("/favicon.ico", (req, res) => {
 // ============================================================
 
 if (fs.existsSync(frontendDistPath)) {
-  app.get(
-    /^\/(?!api(?:\/|$)|uploads(?:\/|$)).*/,
-    (req, res) => {
-      const indexPath = path.join(
-        frontendDistPath,
-        "index.html",
-      );
+  app.get(/^\/(?!api(?:\/|$)|uploads(?:\/|$)).*/, (req, res) => {
+    const indexPath = path.join(frontendDistPath, "index.html");
 
-      if (!fs.existsSync(indexPath)) {
-        return res.status(404).send(
-          "Frontend build not found.",
-        );
-      }
+    if (!fs.existsSync(indexPath)) {
+      return res.status(404).send("Frontend build not found.");
+    }
 
-      return res.sendFile(indexPath);
-    },
-  );
+    return res.sendFile(indexPath);
+  });
 }
 
 // ============================================================
 // ERROR HANDLER
 // ============================================================
 
-app.use(
-  (error, req, res, next) => {
-    console.error(
-      "[SERVER ERROR]",
-      error,
-    );
+app.use((error, req, res, next) => {
+  console.error("[SERVER ERROR]", error);
 
-    if (res.headersSent) {
-      return next(error);
-    }
+  if (res.headersSent) {
+    return next(error);
+  }
 
-    res.status(500).json({
-      ok: false,
-      message: "Internal server error",
-      error:
-        process.env.NODE_ENV === "production"
-          ? "Internal server error"
-          : error.message,
-    });
-  },
-);
+  res.status(500).json({
+    ok: false,
+    message: "Internal server error",
+    error:
+      process.env.NODE_ENV === "production"
+        ? "Internal server error"
+        : error.message,
+  });
+});
 
 // ============================================================
 // VERCEL EXPORT
@@ -545,21 +398,12 @@ module.exports = app;
 if (require.main === module) {
   initializeApp()
     .then(() => {
-      app.listen(
-        PORT,
-        "0.0.0.0",
-        () => {
-          console.log(
-            `Server is running on port ${PORT}`,
-          );
-        },
-      );
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server is running on port ${PORT}`);
+      });
     })
     .catch((error) => {
-      console.error(
-        "Failed to start server:",
-        error,
-      );
+      console.error("Failed to start server:", error);
 
       process.exit(1);
     });
