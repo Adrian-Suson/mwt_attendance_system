@@ -4,5 +4,11 @@
     "src/server.js": {
       "includeFiles": "public/index.html"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/retention-cleanup",
+      "schedule": "0 16 * * *"
+    }
+  ]
 }

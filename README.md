@@ -74,6 +74,10 @@ NODE_ENV=production npm start
 
 The Vite build writes to `Backend/public`, which is served by Express. Do not expose PostgreSQL or Google credentials to the frontend. Put TLS/HTTPS in front of Express using the hosting provider or a reverse proxy. The backend exits early in production if JWT or CORS configuration is missing.
 
+### Automatic attendance and schedule cleanup
+
+On Vercel, a daily cron runs at midnight in the Philippines and deletes attendance records and past employee schedules older than 90 Manila calendar days. Current and future schedules are retained. Configure a strong `CRON_SECRET` environment variable in Vercel; the cleanup endpoint rejects requests without its matching Bearer token. Employee accounts, public-upload rows, and Google Drive images are not deleted by this cleanup.
+
 ## Example request
 
 ```bash

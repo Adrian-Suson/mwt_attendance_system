@@ -134,6 +134,9 @@ let initializationPromise = null;
 const { initializeDatabase } = require("./config/database");
 
 const { setClient } = require("./db");
+const {
+  deleteExpiredAttendanceAndSchedules,
+} = require("./models/retentionCleanup");
 
 // ============================================================
 // ROUTES
@@ -231,6 +234,33 @@ async function initializeApp() {
 //
 // This is important for Vercel serverless execution.
 //
+
+app.get("/api/cron/retention-cleanup", async (req, res) => {
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret) {
+    return res.status(503).json({
+      ok: false,
+      message: "Scheduled cleanup is not configured.",
+    });
+  }
+
+  if (req.get("authorization") !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ ok: false, message: "Unauthorized." });
+  }
+
+  try {
+    await initializeApp();
+    const deleted = await deleteExpiredAttendanceAndSchedules(90);
+    return res.json({ ok: true, retentionDays: 90, ...deleted });
+  } catch (error) {
+    console.error("[CRON] Retention cleanup failed:", error);
+    return res.status(500).json({
+      ok: false,
+      message: "Scheduled cleanup failed.",
+    });
+  }
+});
 
 app.use("/api", async (req, res, next) => {
   try {
