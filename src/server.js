@@ -109,7 +109,19 @@ if (fs.existsSync(frontendDistPath)) {
     app.use("/assets", express.static(assetsPath));
   }
 
-  app.use(express.static(frontendDistPath));
+  app.use(
+    express.static(frontendDistPath, {
+      setHeaders: (res, filePath) => {
+        if (path.basename(filePath) === "index.html") {
+          res.setHeader("Cache-Control", "no-store");
+        }
+      },
+    }),
+  );
+
+  app.use("/assets", (req, res) =>
+    res.status(404).type("text/plain").send("Asset not found."),
+  );
 }
 
 // ============================================================
@@ -346,6 +358,7 @@ if (fs.existsSync(frontendDistPath)) {
       return res.status(404).send("Frontend build not found.");
     }
 
+    res.setHeader("Cache-Control", "no-store");
     return res.sendFile(indexPath);
   });
 }
