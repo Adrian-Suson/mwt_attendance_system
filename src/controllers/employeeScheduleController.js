@@ -36,10 +36,10 @@ async function createEmployeeSchedules(req, res) {
         .status(400)
         .json({ error: "Each schedule needs a date, time in, and time out" });
     }
-    if (schedule.time_out <= schedule.time_in) {
+    if (schedule.time_out === schedule.time_in) {
       return res
         .status(400)
-        .json({ error: "Time Out must be later than Time In" });
+        .json({ error: "Time Out must differ from Time In" });
     }
   }
 

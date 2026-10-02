@@ -113,14 +113,91 @@ function getManilaDateKey(dateValue) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-async function getActiveEmployeeSchedule(employeeId, dateValue) {
-  const dateKey = getManilaDateKey(dateValue);
+function addDateDays(dateKey, dayCount) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + dayCount));
+  return date.toISOString().slice(0, 10);
+}
+
+async function getEmployeeSchedule(employeeId, dateKey) {
   const schedules = await EmployeeSchedule.listSchedules({
     employee_id: employeeId,
     start_date: dateKey,
     end_date: dateKey,
   });
-  return schedules[0]?.time_out || null;
+  return schedules[0] || null;
+}
+
+function formatMinutesForSchedule(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+async function getFirstTimeInSchedulePlan(employeeId, captureDate) {
+  const captureDateKey = getManilaDateKey(captureDate);
+  const currentSchedule = await getEmployeeSchedule(employeeId, captureDateKey);
+  if (currentSchedule) {
+    return { attendanceDate: captureDateKey, scheduleToCreate: null };
+  }
+
+  const capturedMinutes = parseClockToMinutes(getManilaClockTime(captureDate));
+  const scheduledStart = (Math.floor(capturedMinutes / 60) + 1) * 60;
+  const dayOffset = Math.floor(scheduledStart / (24 * 60));
+  const scheduleDate = addDateDays(captureDateKey, dayOffset);
+  const scheduleToCreate = {
+    date: scheduleDate,
+    time_in: formatMinutesForSchedule(scheduledStart % (24 * 60)),
+    time_out: formatMinutesForSchedule((scheduledStart + 9 * 60) % (24 * 60)),
+    notes: "Automatically generated from first Time In.",
+  };
+
+  if (dayOffset > 0 && (await getEmployeeSchedule(employeeId, scheduleDate))) {
+    return { attendanceDate: scheduleDate, scheduleToCreate: null };
+  }
+
+  return { attendanceDate: scheduleDate, scheduleToCreate };
+}
+
+function isOvernightSchedule(schedule) {
+  const timeIn = parseClockToMinutes(schedule?.time_in);
+  const timeOut = parseClockToMinutes(schedule?.time_out);
+  return timeIn !== null && timeOut !== null && timeOut < timeIn;
+}
+
+async function getOpenOvernightAttendance(employeeId, attendanceDate) {
+  const previousDate = addDateDays(attendanceDate, -1);
+  const schedule = await getEmployeeSchedule(employeeId, previousDate);
+  if (!isOvernightSchedule(schedule)) return null;
+
+  const records = await AttendanceRecord.getAllAttendanceRecords({
+    employee_id: employeeId,
+    attendance_date: previousDate,
+  });
+  const record = records.find((item) => item.check_in && !item.check_out);
+  return record ? { attendanceDate: previousDate, schedule, record } : null;
+}
+
+async function getAttendanceWorkDate(employeeId, calendarDate, attendanceType) {
+  if (
+    !String(attendanceType || "")
+      .toLowerCase()
+      .includes("time out")
+  ) {
+    return calendarDate;
+  }
+
+  const currentRecords = await AttendanceRecord.getAllAttendanceRecords({
+    employee_id: employeeId,
+    attendance_date: calendarDate,
+  });
+  if (currentRecords.some((record) => record.check_in)) return calendarDate;
+
+  const overnightAttendance = await getOpenOvernightAttendance(
+    employeeId,
+    calendarDate,
+  );
+  return overnightAttendance?.attendanceDate || calendarDate;
 }
 
 function getManilaClockMinutes(dateValue) {
@@ -153,16 +230,23 @@ async function validateTimeOutSchedule(
   const employee = await Employee.getEmployeeById(employeeId);
   if (!employee) return "Employee not found.";
 
-  const scheduledValue = await getActiveEmployeeSchedule(
+  const captureDateKey = getManilaDateKey(captureDate);
+  const overnightAttendance = await getOpenOvernightAttendance(
     employeeId,
-    captureDate,
+    captureDateKey,
   );
-  const scheduledTimeOut = parseClockToMinutes(scheduledValue);
+  const schedule =
+    overnightAttendance?.schedule ||
+    (await getEmployeeSchedule(employeeId, captureDateKey));
+  const scheduledTimeOut = parseClockToMinutes(schedule?.time_out);
+  if (isOvernightSchedule(schedule) && !overnightAttendance) {
+    return `Time Out is only allowed at ${formatClockTime(schedule.time_out)} or later on the next day.`;
+  }
   if (
     scheduledTimeOut !== null &&
     getManilaClockMinutes(captureDate) < scheduledTimeOut
   ) {
-    return `Time Out is only allowed at ${formatClockTime(scheduledValue)} or later.`;
+    return `Time Out is only allowed at ${formatClockTime(schedule.time_out)} or later.`;
   }
 
   return null;
@@ -197,20 +281,47 @@ async function getPublicAttendanceStatus(req, res) {
       attendance_date: attendanceDate,
     });
 
+    if (!records.some((record) => record.check_in)) {
+      const overnightAttendance = await getOpenOvernightAttendance(
+        employeeId,
+        attendanceDate,
+      );
+      if (overnightAttendance) {
+        return res.json([
+          {
+            check_in: overnightAttendance.record.check_in,
+            check_out: overnightAttendance.record.check_out,
+            attendance_date: overnightAttendance.attendanceDate,
+            is_overnight: true,
+          },
+        ]);
+      }
+    }
+
     res.json(
-      records.map(({ check_in, check_out }) => ({ check_in, check_out })),
+      records.map(({ check_in, check_out, attendance_date }) => ({
+        check_in,
+        check_out,
+        attendance_date,
+      })),
     );
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 }
 
-async function syncAttendanceFromUpload(data) {
+async function syncAttendanceFromUpload(data, workDate) {
   const employeeId = Number(data.employee_id);
   const captureDate = data.capture_datetime
     ? new Date(data.capture_datetime)
     : new Date();
-  const attendanceDate = getPhilippineDate(captureDate);
+  const attendanceDate =
+    workDate ||
+    (await getAttendanceWorkDate(
+      employeeId,
+      getPhilippineDate(captureDate),
+      data.attendance_type,
+    ));
   const status = getAttendanceStatus(data.attendance_type);
 
   if (!employeeId || Number.isNaN(employeeId)) {
@@ -414,8 +525,27 @@ async function createPublicUpload(req, res) {
       });
     }
 
-    const attendanceDate = getPhilippineDate(body.capture_datetime);
+    const captureDate = new Date(body.capture_datetime);
+    const calendarDate = getPhilippineDate(captureDate);
     const attendanceType = String(body.attendance_type || "").toLowerCase();
+    let attendanceDate;
+    let scheduleToCreate = null;
+
+    if (attendanceType.includes("time in")) {
+      const schedulePlan = await getFirstTimeInSchedulePlan(
+        employeeId,
+        captureDate,
+      );
+      attendanceDate = schedulePlan.attendanceDate;
+      scheduleToCreate = schedulePlan.scheduleToCreate;
+    } else {
+      attendanceDate = await getAttendanceWorkDate(
+        employeeId,
+        calendarDate,
+        body.attendance_type,
+      );
+    }
+
     const existingRecords = await AttendanceRecord.getAllAttendanceRecords({
       employee_id: employeeId,
       attendance_date: attendanceDate,
@@ -462,7 +592,17 @@ async function createPublicUpload(req, res) {
     );
     body.file_path = driveFile.webContentLink;
 
-    const attendanceRecord = await syncAttendanceFromUpload(body);
+    if (scheduleToCreate) {
+      await EmployeeSchedule.createScheduleIfMissing(
+        employeeId,
+        scheduleToCreate,
+      );
+    }
+
+    const attendanceRecord = await syncAttendanceFromUpload(
+      body,
+      attendanceDate,
+    );
     body.attendance_record_id = attendanceRecord?.id || null;
     const created = await PublicUpload.createPublicUpload(body);
     res.status(201).json(created);

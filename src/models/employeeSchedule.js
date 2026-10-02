@@ -60,6 +60,25 @@ async function upsertSchedules(employeeId, schedules) {
   return saved;
 }
 
+async function createScheduleIfMissing(employeeId, schedule) {
+  const client = getClient();
+  const result = await client.query(
+    `INSERT INTO employee_schedules
+     (employee_id, schedule_date, time_in, time_out, notes)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (employee_id, schedule_date) DO NOTHING
+     RETURNING *`,
+    [
+      employeeId,
+      schedule.date,
+      schedule.time_in,
+      schedule.time_out,
+      schedule.notes || null,
+    ],
+  );
+  return result.rows[0] || null;
+}
+
 async function deleteSchedules(employeeId, dates) {
   const client = getClient();
   const result = await client.query(
@@ -70,4 +89,9 @@ async function deleteSchedules(employeeId, dates) {
   return result.rowCount;
 }
 
-module.exports = { listSchedules, upsertSchedules, deleteSchedules };
+module.exports = {
+  listSchedules,
+  upsertSchedules,
+  createScheduleIfMissing,
+  deleteSchedules,
+};

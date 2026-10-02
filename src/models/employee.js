@@ -14,6 +14,10 @@ const EMPLOYEE_ROLES = [
   "Driver/Embalmer",
 ];
 
+function normalizeEmail(email) {
+  return typeof email === "string" ? email.trim() || null : email || null;
+}
+
 async function getAllEmployees(page = 1, pageSize = 10, search = "", chapelId) {
   const client = getClient();
   const offset = (page - 1) * pageSize;
@@ -142,7 +146,7 @@ async function createEmployee(data) {
       first_name,
       middle_name,
       last_name,
-      data.email || null,
+      normalizeEmail(data.email),
       data.phone || null,
       data.role,
       data.chapel_id || null,
@@ -178,7 +182,9 @@ async function updateEmployee(id, updates, chapelId) {
   for (const key of allowed) {
     if (Object.prototype.hasOwnProperty.call(updates, key)) {
       sets.push(`${key} = $${idx}`);
-      values.push(updates[key]);
+      values.push(
+        key === "email" ? normalizeEmail(updates[key]) : updates[key],
+      );
       idx += 1;
     }
   }
