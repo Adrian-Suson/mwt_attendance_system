@@ -548,8 +548,15 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (employee_id, schedule_date),
-        CHECK (time_out > time_in)
+        CHECK (time_out <> time_in)
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE employee_schedules
+      DROP CONSTRAINT IF EXISTS employee_schedules_check;
+      ALTER TABLE employee_schedules
+      ADD CONSTRAINT employee_schedules_check CHECK (time_out <> time_in);
     `);
 
     // Keep databases created by older versions compatible with date-based schedules.
