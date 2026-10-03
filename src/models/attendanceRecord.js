@@ -25,6 +25,18 @@ async function getAllAttendanceRecords(filters = {}) {
     idx += 1;
   }
 
+  if (filters.start_date) {
+    conditions.push(`ar.attendance_date >= $${idx}`);
+    values.push(filters.start_date);
+    idx += 1;
+  }
+
+  if (filters.end_date) {
+    conditions.push(`ar.attendance_date <= $${idx}`);
+    values.push(filters.end_date);
+    idx += 1;
+  }
+
   if (filters.status) {
     conditions.push(`ar.status = $${idx}`);
     values.push(filters.status);

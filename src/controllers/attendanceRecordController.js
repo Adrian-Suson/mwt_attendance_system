@@ -7,6 +7,8 @@ async function listAttendanceRecords(req, res) {
         ? Number(req.query.employee_id)
         : undefined,
       attendance_date: req.query.attendance_date || undefined,
+      start_date: req.query.start_date || undefined,
+      end_date: req.query.end_date || undefined,
       status: req.query.status || undefined,
       chapel_id: req.user.role === "cm_admin" ? req.user.chapel_id : undefined,
     };
