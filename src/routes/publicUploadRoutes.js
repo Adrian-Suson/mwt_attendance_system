@@ -5,6 +5,8 @@ const {
   listPublicUploads,
   getPublicUpload,
   streamPublicUploadImage,
+  streamPublicUploadEvidence,
+  createPublicUploadEvidence,
   createPublicUpload,
   updatePublicUpload,
   deletePublicUpload,
@@ -31,6 +33,8 @@ router.get("/employees", listPublicEmployeeNames);
 router.get("/attendance-status", getPublicAttendanceStatus);
 router.get("/", listPublicUploads);
 router.get("/:id/image", streamPublicUploadImage);
+router.get("/:id/evidence-image", streamPublicUploadEvidence);
+router.post("/:id/evidence", upload.single("file"), createPublicUploadEvidence);
 router.get("/:id", getPublicUpload);
 router.post("/", upload.single("file"), createPublicUpload);
 router.put("/:id", updatePublicUpload);

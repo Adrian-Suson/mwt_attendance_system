@@ -516,11 +516,19 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
 
         capture_datetime TIMESTAMPTZ,
 
+        capture_date_source VARCHAR(255),
+
         uploaded_by VARCHAR(255),
 
         attendance_record_id INTEGER
           REFERENCES attendance_records(id)
           ON DELETE SET NULL,
+
+        evidence_file_path TEXT,
+
+        evidence_created_at TIMESTAMPTZ,
+
+        submission_id VARCHAR(64) UNIQUE,
 
         created_at TIMESTAMPTZ
           DEFAULT NOW()
@@ -535,6 +543,14 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
       ALTER TABLE public_uploads
       ADD COLUMN IF NOT EXISTS photo_latitude DOUBLE PRECISION,
       ADD COLUMN IF NOT EXISTS photo_longitude DOUBLE PRECISION;
+    `);
+
+    await client.query(`
+      ALTER TABLE public_uploads
+      ADD COLUMN IF NOT EXISTS capture_date_source VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS evidence_file_path TEXT,
+      ADD COLUMN IF NOT EXISTS evidence_created_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS submission_id VARCHAR(64) UNIQUE;
     `);
 
     await client.query(`

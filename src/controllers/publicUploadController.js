@@ -2,6 +2,7 @@ const PublicUpload = require("../models/publicUpload");
 const AttendanceRecord = require("../models/attendanceRecord");
 const Employee = require("../models/employee");
 const EmployeeSchedule = require("../models/employeeSchedule");
+const { getClient } = require("../db");
 const {
   downloadFromGoogleDrive,
   uploadToGoogleDrive,
@@ -438,6 +439,127 @@ async function streamPublicUploadImage(req, res) {
   }
 }
 
+async function streamPublicUploadEvidence(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid id" });
+
+    const upload = await PublicUpload.getPublicUploadById(id);
+    if (!upload) {
+      return res.status(404).json({ error: "Public upload not found" });
+    }
+    if (!upload.evidence_file_path) {
+      return res.status(404).json({ error: "Evidence photo not found" });
+    }
+
+    const { stream, mimeType } = await downloadFromGoogleDrive(
+      upload.evidence_file_path,
+    );
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    stream.on("error", (error) => {
+      if (!res.headersSent) {
+        res.status(502).json({ error: error.message });
+      } else {
+        res.destroy(error);
+      }
+    });
+    stream.pipe(res);
+  } catch (err) {
+    console.error("Failed to stream Google Drive evidence photo:", err);
+    res.status(502).json({ error: err.message });
+  }
+}
+
+async function createPublicUploadEvidence(req, res) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: "Invalid id" });
+  }
+  if (!req.file?.buffer) {
+    return res.status(400).json({ error: "An evidence image file is required." });
+  }
+
+  let client;
+  let transactionStarted = false;
+
+  try {
+    const pool = getClient();
+    client = await pool.connect();
+    await client.query("BEGIN");
+    transactionStarted = true;
+
+    const result = await client.query(
+      `SELECT id, attendance_record_id, location, evidence_file_path,
+              evidence_created_at
+       FROM public_uploads
+       WHERE id = $1
+       FOR UPDATE`,
+      [id],
+    );
+    const upload = result.rows[0];
+    if (!upload) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return res.status(404).json({ error: "Public upload not found" });
+    }
+    if (!upload.attendance_record_id) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return res.status(409).json({
+        error: "Evidence photos can only be saved for a DTR linked to attendance.",
+      });
+    }
+    if (upload.evidence_file_path) {
+      await client.query("COMMIT");
+      transactionStarted = false;
+      return res.json({
+        id: upload.id,
+        evidence_file_path: upload.evidence_file_path,
+        evidence_created_at: upload.evidence_created_at,
+        evidence_url: `/api/public-uploads/${upload.id}/evidence-image`,
+      });
+    }
+
+    const chapelFolderName = getChapelFolderName(upload.location);
+    if (!chapelFolderName) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return res.status(422).json({
+        error: "The DTR does not have a supported chapel folder for evidence storage.",
+      });
+    }
+
+    const driveFile = await uploadToGoogleDrive(
+      req.file,
+      undefined,
+      chapelFolderName,
+    );
+    const saved = await client.query(
+      `UPDATE public_uploads
+       SET evidence_file_path = $2, evidence_created_at = NOW()
+       WHERE id = $1
+       RETURNING id, evidence_file_path, evidence_created_at`,
+      [id, driveFile.webContentLink],
+    );
+
+    await client.query("COMMIT");
+    transactionStarted = false;
+    res.status(201).json({
+      ...saved.rows[0],
+      evidence_url: `/api/public-uploads/${id}/evidence-image`,
+    });
+  } catch (err) {
+    if (transactionStarted && client) {
+      await client.query("ROLLBACK");
+    }
+    console.error("Failed to save public upload evidence photo:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client?.release();
+  }
+}
+
 async function createPublicUpload(req, res) {
   const body = { ...req.body };
 
@@ -484,17 +606,36 @@ async function createPublicUpload(req, res) {
     });
   }
 
-  const captureTimeError = validateCaptureTime(body.capture_datetime);
-
-  if (captureTimeError) {
-    return res.status(422).json({ error: captureTimeError });
-  }
-
   const employeeId = Number(body.employee_id);
   if (!Number.isInteger(employeeId) || employeeId <= 0) {
     return res
       .status(400)
       .json({ error: "A valid employee must be selected." });
+  }
+
+  if (
+    body.submission_id &&
+    !/^[\w-]{1,64}$/.test(String(body.submission_id))
+  ) {
+    return res.status(400).json({ error: "The DTR submission ID is invalid." });
+  }
+
+  if (body.submission_id) {
+    try {
+      const existingUpload = await PublicUpload.getPublicUploadBySubmissionId(
+        body.submission_id,
+      );
+      if (existingUpload) return res.json(existingUpload);
+    } catch (err) {
+      console.error("Failed to check DTR submission ID:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  const captureTimeError = validateCaptureTime(body.capture_datetime);
+
+  if (captureTimeError) {
+    return res.status(422).json({ error: captureTimeError });
   }
 
   const scheduleError = await validateTimeOutSchedule(
@@ -514,6 +655,14 @@ async function createPublicUpload(req, res) {
         .status(404)
         .json({ error: "Selected employee was not found." });
     }
+    body.employee_name =
+      [
+        employee.first_name,
+        employee.middle_name,
+        employee.last_name,
+      ].filter(Boolean).join(" ") ||
+      employee.name ||
+      employee.email;
 
     const chapelName = String(employee.chapel_name || "").trim();
     const chapelLocation = String(employee.chapel_location || "").trim();
@@ -645,6 +794,8 @@ module.exports = {
   listPublicUploads,
   getPublicUpload,
   streamPublicUploadImage,
+  streamPublicUploadEvidence,
+  createPublicUploadEvidence,
   createPublicUpload,
   updatePublicUpload,
   deletePublicUpload,

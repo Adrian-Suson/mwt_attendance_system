@@ -217,7 +217,22 @@ async function downloadFromGoogleDrive(filePath) {
   };
 }
 
+async function deleteFromGoogleDrive(filePath) {
+  const drive = getDriveClient();
+  const fileId = getDriveFileId(filePath);
+
+  if (!drive || !fileId) {
+    throw new Error("The stored Google Drive file reference is invalid.");
+  }
+
+  await drive.files.delete({
+    fileId,
+    supportsAllDrives: true,
+  });
+}
+
 module.exports = {
+  deleteFromGoogleDrive,
   downloadFromGoogleDrive,
   getOrCreateDriveFolder,
   uploadToGoogleDrive,

@@ -168,19 +168,9 @@ async function updateAttendanceRecord(id, updates) {
   return result.rows[0] || null;
 }
 
-async function deleteAttendanceRecord(id) {
-  const client = getClient();
-  const result = await client.query(
-    "DELETE FROM attendance_records WHERE id = $1 RETURNING *",
-    [id],
-  );
-  return result.rows[0] || null;
-}
-
 module.exports = {
   getAllAttendanceRecords,
   getAttendanceRecordById,
   createAttendanceRecord,
   updateAttendanceRecord,
-  deleteAttendanceRecord,
 };

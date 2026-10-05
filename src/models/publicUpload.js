@@ -46,15 +46,29 @@ async function getPublicUploadById(id) {
   return result.rows[0] || null;
 }
 
+async function getPublicUploadBySubmissionId(submissionId) {
+  const client = getClient();
+  const result = await client.query(
+    `SELECT pu.*, ar.attendance_date, ar.status AS attendance_status,
+        ar.check_in, ar.check_out, ar.working_hours
+     FROM public_uploads pu
+     LEFT JOIN attendance_records ar ON ar.id = pu.attendance_record_id
+     WHERE pu.submission_id = $1`,
+    [submissionId],
+  );
+  return result.rows[0] || null;
+}
+
 async function createPublicUpload(data) {
   const client = getClient();
   const result = await client.query(
     `INSERT INTO public_uploads (
        employee_id, employee_name, attendance_type,
       file_name, file_path, location, photo_latitude, photo_longitude,
-      capture_datetime, uploaded_by, attendance_record_id
+      capture_datetime, capture_date_source, uploaded_by, attendance_record_id,
+      submission_id
      )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING *`,
     [
       data.employee_id || null,
@@ -66,8 +80,10 @@ async function createPublicUpload(data) {
       data.photo_latitude ?? null,
       data.photo_longitude ?? null,
       data.capture_datetime || null,
+      data.capture_date_source || null,
       data.uploaded_by || null,
       data.attendance_record_id || null,
+      data.submission_id || null,
     ],
   );
   return getPublicUploadById(result.rows[0].id);
@@ -85,6 +101,7 @@ async function updatePublicUpload(id, updates) {
     "photo_latitude",
     "photo_longitude",
     "capture_datetime",
+    "capture_date_source",
     "uploaded_by",
     "attendance_record_id",
   ];
@@ -125,6 +142,7 @@ async function deletePublicUpload(id) {
 module.exports = {
   getAllPublicUploads,
   getPublicUploadById,
+  getPublicUploadBySubmissionId,
   createPublicUpload,
   updatePublicUpload,
   deletePublicUpload,

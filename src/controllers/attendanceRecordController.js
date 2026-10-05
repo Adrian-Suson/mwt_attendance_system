@@ -1,4 +1,7 @@
 const AttendanceRecord = require("../models/attendanceRecord");
+const {
+  deleteAttendanceRecordAndUploads,
+} = require("../services/attendanceDeletionService");
 
 async function listAttendanceRecords(req, res) {
   try {
@@ -71,7 +74,7 @@ async function deleteAttendanceRecord(req, res) {
   try {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid id" });
-    const removed = await AttendanceRecord.deleteAttendanceRecord(id);
+    const removed = await deleteAttendanceRecordAndUploads(id);
     if (!removed) {
       return res.status(404).json({ error: "Attendance record not found" });
     }
