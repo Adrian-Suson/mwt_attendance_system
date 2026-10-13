@@ -1,5 +1,11 @@
 const Employee = require("../models/employee");
 
+function isValidDateOnly(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 async function listPublicEmployeeNames(req, res) {
   try {
     const employees = await Employee.getPublicEmployeeNames();
@@ -15,7 +21,7 @@ async function listEmployees(req, res) {
     const pageSize = parseInt(req.query.pageSize || 10, 10);
     const search = req.query.search || req.query.q || "";
 
-    if (page < 1 || pageSize < 1) {
+    if (page < 1 || pageSize < 1 || pageSize > 1000) {
       return res.status(400).json({ error: "Invalid page or pageSize" });
     }
 
@@ -24,11 +30,21 @@ async function listEmployees(req, res) {
       : undefined;
     const chapelId =
       req.user.role === "cm_admin" ? req.user.chapel_id : requestedChapelId;
+    const attendanceDate = req.query.attendance_date || undefined;
+    if (attendanceDate && !isValidDateOnly(attendanceDate)) {
+      return res.status(400).json({ error: "Invalid attendance_date" });
+    }
     const result = await Employee.getAllEmployees(
       page,
       pageSize,
       search,
       chapelId,
+      {
+        attendanceDate,
+        status: req.query.status || undefined,
+        sortBy: req.query.sort_by || "name",
+        sortDirection: req.query.sort_direction || "asc",
+      },
     );
     res.json(result);
   } catch (err) {

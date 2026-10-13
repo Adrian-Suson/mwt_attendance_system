@@ -18,13 +18,41 @@ function normalizeEmail(email) {
   return typeof email === "string" ? email.trim() || null : email || null;
 }
 
-async function getAllEmployees(page = 1, pageSize = 10, search = "", chapelId) {
+async function getAllEmployees(
+  page = 1,
+  pageSize = 10,
+  search = "",
+  chapelId,
+  options = {},
+) {
   const client = getClient();
   const offset = (page - 1) * pageSize;
   const searchTerm = search.trim().toLowerCase();
 
   const filterParams = [];
   const conditions = [];
+  const sortColumns = {
+    name: "LOWER(TRIM(CONCAT_WS(' ', e.first_name, e.middle_name, e.last_name)))",
+    role: `CASE LOWER(TRIM(COALESCE(e.role, '')))
+      WHEN 'gcm' THEN 0
+      WHEN 'cm' THEN 1
+      WHEN 'gcm staff' THEN 2
+      WHEN 'fcr' THEN 3
+      WHEN 'driver' THEN 4
+      WHEN 'embalmer' THEN 5
+      WHEN 'attendant' THEN 6
+      WHEN 'attendant/asst embalmer' THEN 7
+      WHEN 'driver/asst embalmer' THEN 8
+      WHEN 'driver/attendant' THEN 9
+      WHEN 'driver/embalmer' THEN 10
+      ELSE 11
+    END`,
+    chapel: "LOWER(COALESCE(c.name, ''))",
+    status: "LOWER(COALESCE(e.status, ''))",
+  };
+  const sortColumn = sortColumns[options.sortBy] || sortColumns.name;
+  const sortDirection =
+    String(options.sortDirection).toLowerCase() === "desc" ? "DESC" : "ASC";
 
   if (searchTerm) {
     filterParams.push(`%${searchTerm}%`);
@@ -51,26 +79,56 @@ async function getAllEmployees(page = 1, pageSize = 10, search = "", chapelId) {
     )`);
   }
 
+  if (options.status) {
+    filterParams.push(options.status);
+    conditions.push(`LOWER(COALESCE(e.status, '')) = LOWER($${filterParams.length})`);
+  }
+
   const whereClause = conditions.length
     ? `WHERE ${conditions.join(" AND ")}`
     : "";
 
+  const attendanceDateParam = options.attendanceDate
+    ? filterParams.length + 1
+    : null;
   const limitIdx = filterParams.length + 1;
   const offsetIdx = filterParams.length + 2;
+  const queryParams = options.attendanceDate
+    ? [...filterParams, options.attendanceDate, pageSize, offset]
+    : [...filterParams, pageSize, offset];
 
   const result = await client.query(
     `SELECT e.*, c.name AS chapel_name,
             s.time_in AS scheduled_time_in,
             s.time_out AS scheduled_time_out
+            ${attendanceDateParam ? `,
+            ar.status AS attendance_status,
+            ar.check_in AS attendance_check_in,
+            ar.check_out AS attendance_check_out,
+            EXISTS (
+              SELECT 1
+              FROM employee_day_offs edo
+              WHERE edo.employee_id = e.id
+                AND edo.day_off_date = $${attendanceDateParam}
+            ) AS is_day_off` : ""}
      FROM employees e
      LEFT JOIN chapels c ON c.id = e.chapel_id
      LEFT JOIN employee_schedules s
        ON s.employee_id = e.id
       AND s.schedule_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date
+     ${attendanceDateParam ? `LEFT JOIN LATERAL (
+       SELECT ar.status, ar.check_in, ar.check_out
+       FROM attendance_records ar
+       WHERE ar.employee_id = e.id
+         AND ar.attendance_date = $${attendanceDateParam}
+       ORDER BY ar.id DESC
+       LIMIT 1
+     ) ar ON TRUE` : ""}
      ${whereClause}
-     ORDER BY e.id ASC
-     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-    [...filterParams, pageSize, offset],
+     ORDER BY ${sortColumn} ${sortDirection}, e.id ASC
+     LIMIT $${limitIdx + (attendanceDateParam ? 1 : 0)}
+     OFFSET $${offsetIdx + (attendanceDateParam ? 1 : 0)}`,
+    queryParams,
   );
 
   const countResult = await client.query(
