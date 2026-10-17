@@ -54,6 +54,12 @@ async function syncAttendanceForDates(employeeId, dates, leaveType, notes) {
  */
 async function listEmployeeLeaves(req, res) {
   try {
+    if (req.user.role === ROLES.CM && !req.user.chapel_id) {
+      return res
+        .status(403)
+        .json({ error: "Your account is not assigned to a chapel" });
+    }
+
     const filters = {
       employee_id: req.query.employee_id
         ? Number(req.query.employee_id)
@@ -62,6 +68,9 @@ async function listEmployeeLeaves(req, res) {
       start_date: req.query.start_date || undefined,
 
       end_date: req.query.end_date || undefined,
+
+      chapel_id:
+        req.user.role === ROLES.CM ? req.user.chapel_id : undefined,
     };
 
     const rows = await EmployeeLeave.getEmployeeLeaves(filters);

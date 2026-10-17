@@ -37,6 +37,19 @@ async function getEmployeeLeaves(filters = {}) {
     idx++;
   }
 
+  if (filters.chapel_id) {
+    conditions.push(`(
+      e.chapel_id = $${idx} OR
+      EXISTS (
+        SELECT 1
+        FROM employee_chapels ec
+        WHERE ec.employee_id = e.id AND ec.chapel_id = $${idx}
+      )
+    )`);
+    values.push(filters.chapel_id);
+    idx++;
+  }
+
   const where =
     conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
