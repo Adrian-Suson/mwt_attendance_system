@@ -7,25 +7,43 @@ async function listSchedules(filters = {}) {
   let index = 1;
 
   if (filters.employee_id) {
-    conditions.push(`employee_id = $${index}`);
+    conditions.push(`es.employee_id = $${index}`);
     values.push(filters.employee_id);
     index += 1;
   }
   if (filters.start_date) {
-    conditions.push(`schedule_date >= $${index}`);
+    conditions.push(`es.schedule_date >= $${index}`);
     values.push(filters.start_date);
     index += 1;
   }
   if (filters.end_date) {
-    conditions.push(`schedule_date <= $${index}`);
+    conditions.push(`es.schedule_date <= $${index}`);
     values.push(filters.end_date);
+    index += 1;
+  }
+  if (filters.chapel_id) {
+    conditions.push(`EXISTS (
+      SELECT 1
+      FROM employees e
+      WHERE e.id = es.employee_id
+        AND (
+          e.chapel_id = $${index}
+          OR EXISTS (
+            SELECT 1
+            FROM employee_chapels ec
+            WHERE ec.employee_id = e.id
+              AND ec.chapel_id = $${index}
+          )
+        )
+    )`);
+    values.push(filters.chapel_id);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const result = await client.query(
-    `SELECT id, employee_id, schedule_date, time_in, time_out, notes
-     FROM employee_schedules ${where}
-     ORDER BY schedule_date ASC`,
+    `SELECT es.id, es.employee_id, es.schedule_date, es.time_in, es.time_out, es.notes
+     FROM employee_schedules es ${where}
+     ORDER BY es.schedule_date ASC`,
     values,
   );
   return result.rows;

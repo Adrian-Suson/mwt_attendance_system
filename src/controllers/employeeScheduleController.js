@@ -1,17 +1,39 @@
 const EmployeeSchedule = require("../models/employeeSchedule");
+const Employee = require("../models/employee");
+const { ROLES } = require("../middlewares/auth");
+
+async function authorizeScheduleEmployee(req, res, employeeId) {
+  if (req.user.role !== ROLES.CM) return true;
+  if (!req.user.chapel_id) {
+    res.status(403).json({ error: "Your account is not assigned to a chapel" });
+    return false;
+  }
+
+  const employee = await Employee.getEmployeeById(employeeId, req.user.chapel_id);
+  if (!employee) {
+    res.status(404).json({ error: "Employee not found in your chapel" });
+    return false;
+  }
+  return true;
+}
 
 async function listEmployeeSchedules(req, res) {
+  if (req.user.role === ROLES.CM && !req.user.chapel_id) {
+    return res.status(403).json({ error: "Your account is not assigned to a chapel" });
+  }
+
   try {
     const rows = await EmployeeSchedule.listSchedules({
       employee_id: req.query.employee_id
         ? Number(req.query.employee_id)
         : undefined,
+      chapel_id: req.user.role === ROLES.CM ? req.user.chapel_id : undefined,
       start_date: req.query.start_date,
       end_date: req.query.end_date,
     });
     res.json(rows);
   } catch (error) {
-    console.error("[SCHEDULE] Failed to save schedules:", error.message);
+    console.error("[SCHEDULE] Failed to load schedules:", error.message);
     res.status(500).json({ error: error.message });
   }
 }
@@ -44,6 +66,7 @@ async function createEmployeeSchedules(req, res) {
   }
 
   try {
+    if (!(await authorizeScheduleEmployee(req, res, employeeId))) return;
     res
       .status(201)
       .json(await EmployeeSchedule.upsertSchedules(employeeId, schedules));
@@ -62,6 +85,7 @@ async function deleteEmployeeSchedules(req, res) {
   }
 
   try {
+    if (!(await authorizeScheduleEmployee(req, res, employeeId))) return;
     const deleted = await EmployeeSchedule.deleteSchedules(employeeId, dates);
     res.json({ ok: true, deleted });
   } catch (error) {

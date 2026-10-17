@@ -34,6 +34,17 @@ async function listEmployees(req, res) {
     if (attendanceDate && !isValidDateOnly(attendanceDate)) {
       return res.status(400).json({ error: "Invalid attendance_date" });
     }
+    const dayOffStartDate = req.query.day_off_start_date || undefined;
+    const dayOffEndDate = req.query.day_off_end_date || undefined;
+    if (
+      Boolean(dayOffStartDate) !== Boolean(dayOffEndDate) ||
+      (dayOffStartDate &&
+        (!isValidDateOnly(dayOffStartDate) ||
+          !isValidDateOnly(dayOffEndDate) ||
+          dayOffStartDate > dayOffEndDate))
+    ) {
+      return res.status(400).json({ error: "Invalid day-off date range" });
+    }
     const result = await Employee.getAllEmployees(
       page,
       pageSize,
@@ -41,6 +52,8 @@ async function listEmployees(req, res) {
       chapelId,
       {
         attendanceDate,
+        dayOffStartDate,
+        dayOffEndDate,
         status: req.query.status || undefined,
         sortBy: req.query.sort_by || "name",
         sortDirection: req.query.sort_direction || "asc",
@@ -77,6 +90,7 @@ async function createEmployee(req, res) {
     chapel_id,
     status,
     hire_date,
+    day_off,
   } = req.body;
 
   if (!(name || first_name) || !role) {
@@ -98,6 +112,7 @@ async function createEmployee(req, res) {
       time_out: req.body.time_out,
       status,
       hire_date,
+      day_off,
     });
     res.status(201).json(created);
   } catch (err) {

@@ -91,11 +91,21 @@ async function getAllEmployees(
   const attendanceDateParam = options.attendanceDate
     ? filterParams.length + 1
     : null;
-  const limitIdx = filterParams.length + 1;
-  const offsetIdx = filterParams.length + 2;
-  const queryParams = options.attendanceDate
-    ? [...filterParams, options.attendanceDate, pageSize, offset]
-    : [...filterParams, pageSize, offset];
+  const dayOffStartDateParam =
+    options.dayOffStartDate && options.dayOffEndDate
+      ? filterParams.length + (options.attendanceDate ? 2 : 1)
+      : null;
+  const dayOffEndDateParam = dayOffStartDateParam
+    ? dayOffStartDateParam + 1
+    : null;
+  const queryParams = [...filterParams];
+  if (options.attendanceDate) queryParams.push(options.attendanceDate);
+  if (dayOffStartDateParam) {
+    queryParams.push(options.dayOffStartDate, options.dayOffEndDate);
+  }
+  const limitIdx = queryParams.length + 1;
+  const offsetIdx = queryParams.length + 2;
+  queryParams.push(pageSize, offset);
 
   const result = await client.query(
     `SELECT e.*, c.name AS chapel_name,
@@ -111,6 +121,14 @@ async function getAllEmployees(
               WHERE edo.employee_id = e.id
                 AND edo.day_off_date = $${attendanceDateParam}
             ) AS is_day_off` : ""}
+            ${dayOffStartDateParam ? `,
+            ARRAY(
+              SELECT TO_CHAR(edo.day_off_date, 'YYYY-MM-DD')
+              FROM employee_day_offs edo
+              WHERE edo.employee_id = e.id
+                AND edo.day_off_date BETWEEN $${dayOffStartDateParam} AND $${dayOffEndDateParam}
+              ORDER BY edo.day_off_date
+            ) AS day_off_dates` : ""}
      FROM employees e
      LEFT JOIN chapels c ON c.id = e.chapel_id
      LEFT JOIN employee_schedules s
@@ -126,8 +144,8 @@ async function getAllEmployees(
      ) ar ON TRUE` : ""}
      ${whereClause}
      ORDER BY ${sortColumn} ${sortDirection}, e.id ASC
-     LIMIT $${limitIdx + (attendanceDateParam ? 1 : 0)}
-     OFFSET $${offsetIdx + (attendanceDateParam ? 1 : 0)}`,
+     LIMIT $${limitIdx}
+     OFFSET $${offsetIdx}`,
     queryParams,
   );
 
@@ -196,9 +214,9 @@ async function createEmployee(data) {
   const result = await client.query(
     `INSERT INTO employees (
        first_name, middle_name, last_name, email, phone, role,
-      chapel_id, employment_type, status, hire_date
+      chapel_id, employment_type, status, hire_date, day_off
      )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
       first_name,
@@ -211,6 +229,7 @@ async function createEmployee(data) {
       data.employment_type || "Regular",
       data.status || "active",
       data.hire_date || null,
+      data.day_off || "Sunday",
     ],
   );
 
@@ -231,6 +250,7 @@ async function updateEmployee(id, updates, chapelId) {
     "chapel_id",
     "status",
     "hire_date",
+    "day_off",
   ];
 
   const sets = [];
