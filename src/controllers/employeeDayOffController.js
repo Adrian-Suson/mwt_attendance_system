@@ -1,13 +1,32 @@
 const Employee = require("../models/employee");
 const EmployeeDayOff = require("../models/employeeDayOff");
+const { ROLES } = require("../middlewares/auth");
+
+async function getAuthorizedEmployee(req, res, employeeId) {
+  if (req.user.role === ROLES.CM && !req.user.chapel_id) {
+    res.status(403).json({ error: "Your account is not assigned to a chapel" });
+    return null;
+  }
+
+  const chapelId = req.user.role === ROLES.CM ? req.user.chapel_id : undefined;
+  const employee = await Employee.getEmployeeById(employeeId, chapelId);
+  if (!employee) {
+    res.status(404).json({
+      error: chapelId
+        ? "Employee not found in your chapel"
+        : "Employee not found",
+    });
+  }
+  return employee;
+}
 
 async function listEmployeeDayOffs(req, res) {
   try {
     const employeeId = Number(req.query.employee_id);
     if (!employeeId)
       return res.status(400).json({ error: "employee_id is required" });
-    const employee = await Employee.getEmployeeById(employeeId);
-    if (!employee) return res.status(404).json({ error: "Employee not found" });
+    const employee = await getAuthorizedEmployee(req, res, employeeId);
+    if (!employee) return;
     res.json(await EmployeeDayOff.listDayOffs(employeeId));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -24,8 +43,8 @@ async function createEmployeeDayOffs(req, res) {
   }
 
   try {
-    const employee = await Employee.getEmployeeById(employeeId);
-    if (!employee) return res.status(404).json({ error: "Employee not found" });
+    const employee = await getAuthorizedEmployee(req, res, employeeId);
+    if (!employee) return;
     res
       .status(201)
       .json(
@@ -46,8 +65,8 @@ async function deleteEmployeeDayOffs(req, res) {
   }
 
   try {
-    const employee = await Employee.getEmployeeById(employeeId);
-    if (!employee) return res.status(404).json({ error: "Employee not found" });
+    const employee = await getAuthorizedEmployee(req, res, employeeId);
+    if (!employee) return;
     res.json({
       ok: true,
       deleted: await EmployeeDayOff.deleteDayOffs(employeeId, dates),

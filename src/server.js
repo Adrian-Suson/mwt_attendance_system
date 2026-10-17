@@ -148,6 +148,7 @@ const userRoutes = require("./routes/userRoutes");
 const attendanceRecordRoutes = require("./routes/attendanceRecordRoutes");
 const employeeLeaveRoutes = require("./routes/employeeLeaveRoutes");
 const employeeScheduleRoutes = require("./routes/employeeScheduleRoutes");
+const employeeCalendarRoutes = require("./routes/employeeCalendarRoutes");
 const employeeDayOffRoutes = require("./routes/employeeDayOffRoutes");
 const publicUploadRoutes = require("./routes/publicUploadRoutes");
 const authRoutes = require("./routes/authRoutes");
@@ -336,6 +337,8 @@ app.use("/api/employee-leave", employeeLeaveRoutes);
 app.use("/api/employee-Leave", employeeLeaveRoutes);
 
 app.use("/api/employee-schedules", employeeScheduleRoutes);
+
+app.use("/api/employee-calendar", employeeCalendarRoutes);
 
 app.use("/api/employee-day-offs", employeeDayOffRoutes);
 

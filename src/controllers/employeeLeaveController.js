@@ -1,6 +1,7 @@
 const EmployeeLeave = require("../models/employeeLeave");
 const AttendanceRecord = require("../models/attendanceRecord");
 const Employee = require("../models/employee");
+const { ROLES } = require("../middlewares/auth");
 
 /**
  * Sync selected leave dates into attendance.
@@ -281,9 +282,21 @@ async function deleteEmployeeLeaves(req, res) {
   }
 
   try {
-    const employee = await Employee.getEmployeeById(employeeId);
+    if (req.user.role === ROLES.CM && !req.user.chapel_id) {
+      return res
+        .status(403)
+        .json({ error: "Your account is not assigned to a chapel" });
+    }
+
+    const chapelId =
+      req.user.role === ROLES.CM ? req.user.chapel_id : undefined;
+    const employee = await Employee.getEmployeeById(employeeId, chapelId);
     if (!employee) {
-      return res.status(404).json({ error: "Employee not found" });
+      return res.status(404).json({
+        error: chapelId
+          ? "Employee not found in your chapel"
+          : "Employee not found",
+      });
     }
 
     const deleted = await EmployeeLeave.deleteEmployeeLeaves(employeeId, dates);
