@@ -137,9 +137,6 @@ const { setClient } = require("./db");
 const {
   deleteExpiredAttendanceAndSchedules,
 } = require("./models/retentionCleanup");
-const {
-  sendOpenAttendanceAlert,
-} = require("./services/attendanceNotificationService");
 
 // ============================================================
 // ROUTES
@@ -262,33 +259,6 @@ app.get("/api/cron/retention-cleanup", async (req, res) => {
     return res.status(500).json({
       ok: false,
       message: "Scheduled cleanup failed.",
-    });
-  }
-});
-
-app.get("/api/cron/attendance-alert", async (req, res) => {
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (!cronSecret) {
-    return res.status(503).json({
-      ok: false,
-      message: "Scheduled attendance alerts are not configured.",
-    });
-  }
-
-  if (req.get("authorization") !== `Bearer ${cronSecret}`) {
-    return res.status(401).json({ ok: false, message: "Unauthorized." });
-  }
-
-  try {
-    await initializeApp();
-    const result = await sendOpenAttendanceAlert();
-    return res.json({ ok: true, ...result });
-  } catch (error) {
-    console.error("[CRON] Attendance alert failed:", error);
-    return res.status(500).json({
-      ok: false,
-      message: "Scheduled attendance alert failed.",
     });
   }
 });
