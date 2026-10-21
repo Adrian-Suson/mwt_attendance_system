@@ -528,6 +528,8 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
 
         evidence_created_at TIMESTAMPTZ,
 
+        brevo_notified_at TIMESTAMPTZ,
+
         submission_id VARCHAR(64) UNIQUE,
 
         created_at TIMESTAMPTZ
@@ -550,6 +552,7 @@ async function initializeDatabase(dbConfig, dbLogConfig, autoCreateDb) {
       ADD COLUMN IF NOT EXISTS capture_date_source VARCHAR(255),
       ADD COLUMN IF NOT EXISTS evidence_file_path TEXT,
       ADD COLUMN IF NOT EXISTS evidence_created_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS brevo_notified_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS submission_id VARCHAR(64) UNIQUE;
     `);
 

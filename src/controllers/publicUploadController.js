@@ -7,6 +7,9 @@ const {
   downloadFromGoogleDrive,
   uploadToGoogleDrive,
 } = require("../services/googleDriveService");
+const {
+  sendDtrEvidenceNotification,
+} = require("../services/attendanceNotificationService");
 
 const MAX_UPLOAD_DELAY_MINUTES = 5;
 
@@ -482,6 +485,8 @@ async function createPublicUploadEvidence(req, res) {
 
   let client;
   let transactionStarted = false;
+  let savedUpload;
+  let evidenceAlreadySaved = false;
 
   try {
     const pool = getClient();
@@ -490,8 +495,7 @@ async function createPublicUploadEvidence(req, res) {
     transactionStarted = true;
 
     const result = await client.query(
-      `SELECT id, attendance_record_id, location, evidence_file_path,
-              evidence_created_at
+      `SELECT *
        FROM public_uploads
        WHERE id = $1
        FOR UPDATE`,
@@ -513,51 +517,71 @@ async function createPublicUploadEvidence(req, res) {
     if (upload.evidence_file_path) {
       await client.query("COMMIT");
       transactionStarted = false;
-      return res.json({
-        id: upload.id,
-        evidence_file_path: upload.evidence_file_path,
-        evidence_created_at: upload.evidence_created_at,
-        evidence_url: `/api/public-uploads/${upload.id}/evidence-image`,
-      });
-    }
+      evidenceAlreadySaved = true;
+      savedUpload = upload;
+    } else {
+      const chapelFolderName = getChapelFolderName(upload.location);
+      if (!chapelFolderName) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+        return res.status(422).json({
+          error: "The DTR does not have a supported chapel folder for evidence storage.",
+        });
+      }
 
-    const chapelFolderName = getChapelFolderName(upload.location);
-    if (!chapelFolderName) {
-      await client.query("ROLLBACK");
+      const driveFile = await uploadToGoogleDrive(
+        req.file,
+        undefined,
+        chapelFolderName,
+      );
+      const saved = await client.query(
+        `UPDATE public_uploads
+         SET evidence_file_path = $2, evidence_created_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [id, driveFile.webContentLink],
+      );
+      savedUpload = { ...upload, ...saved.rows[0] };
+
+      await client.query("COMMIT");
       transactionStarted = false;
-      return res.status(422).json({
-        error: "The DTR does not have a supported chapel folder for evidence storage.",
-      });
     }
-
-    const driveFile = await uploadToGoogleDrive(
-      req.file,
-      undefined,
-      chapelFolderName,
-    );
-    const saved = await client.query(
-      `UPDATE public_uploads
-       SET evidence_file_path = $2, evidence_created_at = NOW()
-       WHERE id = $1
-       RETURNING id, evidence_file_path, evidence_created_at`,
-      [id, driveFile.webContentLink],
-    );
-
-    await client.query("COMMIT");
-    transactionStarted = false;
-    res.status(201).json({
-      ...saved.rows[0],
-      evidence_url: `/api/public-uploads/${id}/evidence-image`,
-    });
+    client.release();
+    client = null;
   } catch (err) {
     if (transactionStarted && client) {
       await client.query("ROLLBACK");
     }
     console.error("Failed to save public upload evidence photo:", err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   } finally {
     client?.release();
   }
+
+  let notificationError;
+  try {
+    await sendDtrEvidenceNotification(
+      savedUpload,
+      req.file.buffer,
+      req.file.mimetype,
+      req.file.originalname,
+    );
+  } catch (err) {
+    notificationError = err.message;
+    console.error(
+      `Failed to send Brevo DTR notification for upload ${id}:`,
+      err,
+    );
+  }
+
+  const responseBody = {
+    id: savedUpload.id,
+    evidence_file_path: savedUpload.evidence_file_path,
+    evidence_created_at: savedUpload.evidence_created_at,
+    evidence_url: `/api/public-uploads/${id}/evidence-image`,
+    ...(notificationError ? { notification_error: notificationError } : {}),
+  };
+  res.status(evidenceAlreadySaved ? 200 : 201).json(responseBody);
 }
 
 async function createPublicUpload(req, res) {

@@ -37,6 +37,22 @@ Alternatively, set `GOOGLE_SERVICE_ACCOUNT_JSON` to the minified contents of the
 
 The OAuth web client JSON (`client_id` and `client_secret`) is not sufficient by itself for server uploads because it requires a user authorization flow and refresh token. Do not commit either credential file or place secrets in frontend code. Rotate any client secret that has been exposed publicly.
 
+## Brevo attendance notifications
+
+The backend sends an email with the generated DTR evidence image after each Time In or Time Out upload. A scheduled check sends one alert at 8:00 AM Philippines time when an employee has an open attendance record past their scheduled time-out. Overnight schedules are checked against their next-day time-out.
+
+Create a Brevo API key and verify the sender email address in Brevo. Set these variables in `Backend/.env` for local use and in the backend deployment environment for production:
+
+```env
+BREVO_API_KEY=your_brevo_api_key
+BREVO_SENDER_EMAIL=verified-sender@example.com
+BREVO_SENDER_NAME=Attendance System
+BREVO_NOTIFICATION_EMAIL=your-notification-address@example.com
+CRON_SECRET=your_existing_vercel_cron_secret
+```
+
+Set `BREVO_NOTIFICATION_EMAIL` to the address that should receive alerts. Keep the API key only in backend environment variables; never add it to frontend configuration or commit it. The Vercel cron schedule runs at `0 0 * * *` UTC, which is 8:00 AM in the Philippines. Vercel sends the configured `CRON_SECRET` as the cron authorization header.
+
 ### Deployment configuration
 
 For production, add these variables in the hosting provider's backend environment settings:

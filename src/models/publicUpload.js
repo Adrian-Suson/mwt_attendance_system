@@ -139,6 +139,16 @@ async function deletePublicUpload(id) {
   return result.rows[0] || null;
 }
 
+async function markBrevoNotificationSent(id) {
+  const client = getClient();
+  await client.query(
+    `UPDATE public_uploads
+     SET brevo_notified_at = NOW()
+     WHERE id = $1 AND brevo_notified_at IS NULL`,
+    [id],
+  );
+}
+
 module.exports = {
   getAllPublicUploads,
   getPublicUploadById,
@@ -146,4 +156,5 @@ module.exports = {
   createPublicUpload,
   updatePublicUpload,
   deletePublicUpload,
+  markBrevoNotificationSent,
 };
