@@ -15,16 +15,10 @@ async function deleteExpiredAttendanceAndSchedules(retentionDays) {
        USING retention_cutoff
        WHERE attendance_records.attendance_date < retention_cutoff.cutoff_date
        RETURNING attendance_records.id
-     ),
-     deleted_schedules AS (
-       DELETE FROM employee_schedules
-       USING retention_cutoff
-       WHERE employee_schedules.schedule_date < retention_cutoff.cutoff_date
-       RETURNING employee_schedules.id
      )
      SELECT
        (SELECT COUNT(*)::int FROM deleted_attendance) AS deleted_attendance,
-       (SELECT COUNT(*)::int FROM deleted_schedules) AS deleted_schedules`,
+       0::int AS deleted_schedules`,
     [retentionDays],
   );
 

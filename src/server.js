@@ -4,6 +4,7 @@ const rateLimit = require("express-rate-limit");
 const path = require("path");
 const fs = require("fs");
 const cors = require("cors");
+const { randomUUID } = require("crypto");
 
 const { PORT, AUTO_CREATE_DB, dbConfig, dbLogConfig } = require("./config");
 
@@ -14,6 +15,50 @@ app.disable("x-powered-by");
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
+
+// ============================================================
+// HTTP REQUEST LOGGING
+// ============================================================
+
+app.use((req, res, next) => {
+  const suppliedRequestId = req.get("x-request-id");
+  const requestId =
+    suppliedRequestId && /^[A-Za-z0-9._-]{1,100}$/.test(suppliedRequestId)
+      ? suppliedRequestId
+      : randomUUID();
+  const startedAt = process.hrtime.bigint();
+  let logged = false;
+
+  req.requestId = requestId;
+  res.setHeader("X-Request-ID", requestId);
+
+  const logRequest = (completed) => {
+    if (logged) {
+      return;
+    }
+
+    logged = true;
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+
+    console.log(
+      "[HTTP]",
+      JSON.stringify({
+        requestId,
+        method: req.method,
+        path: req.path,
+        status: completed ? res.statusCode : 499,
+        durationMs: Math.round(durationMs * 100) / 100,
+        requestBytes: Number(req.get("content-length")) || 0,
+        responseBytes: Number(res.getHeader("content-length")) || 0,
+        completed,
+      }),
+    );
+  };
+
+  res.on("finish", () => logRequest(true));
+  res.on("close", () => logRequest(res.writableFinished));
+  next();
+});
 
 // ============================================================
 // PATHS
@@ -88,7 +133,8 @@ app.use(
 
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
 
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Request-ID"],
+    exposedHeaders: ["X-Request-ID"],
   }),
 );
 
