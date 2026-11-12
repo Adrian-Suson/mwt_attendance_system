@@ -28,6 +28,15 @@ app.use((req, res, next) => {
       : randomUUID();
   const startedAt = process.hrtime.bigint();
   let logged = false;
+  const clientPath = req.get("x-request-path");
+  const originalPath = (req.originalUrl || req.path).split("?")[0];
+  const requestPath =
+    clientPath &&
+    clientPath.startsWith("/") &&
+    !clientPath.includes("?") &&
+    !/[\r\n]/.test(clientPath)
+      ? clientPath
+      : originalPath;
 
   req.requestId = requestId;
   res.setHeader("X-Request-ID", requestId);
@@ -45,7 +54,8 @@ app.use((req, res, next) => {
       JSON.stringify({
         requestId,
         method: req.method,
-        path: req.path,
+        path: requestPath,
+        routedPath: req.path,
         status: completed ? res.statusCode : 499,
         durationMs: Math.round(durationMs * 100) / 100,
         requestBytes: Number(req.get("content-length")) || 0,
@@ -133,7 +143,12 @@ app.use(
 
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
 
-    allowedHeaders: ["Content-Type", "Authorization", "X-Request-ID"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Request-ID",
+      "X-Request-Path",
+    ],
     exposedHeaders: ["X-Request-ID"],
   }),
 );
